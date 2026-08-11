@@ -64,7 +64,7 @@ export default {
       }
 
       // 实例关机 → 触发开机
-      if (status === 'stopped' || status === 'closed' || status === '已关机' || status === 'offline') {
+      if (status === 'stopped' || status === 'closed' || status === '已关机' || status === 'offline' || status === 'shutdown') {
         // 先查余额
         const balance = await checkBalance(env);
         if (balance >= 0 && balance < 5) {
