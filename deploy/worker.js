@@ -55,10 +55,19 @@ export default {
       const status = instanceInfo?.status || 'unknown';
 
       if (status === 'running' || status === 'Running' || status === '使用中') {
-        // 实例已开机 → 直接重定向到公网地址
-        // 注意：Cloudflare Workers无法访问非标准端口的HTTP服务，因此不做健康检查
         if (env.AUTODL_PUBLIC_URL) {
-          return Response.redirect(env.AUTODL_PUBLIC_URL, 302);
+          try {
+            const healthResp = await fetch(env.AUTODL_PUBLIC_URL + '/health', {
+              signal: AbortSignal.timeout(8000),
+            });
+            if (healthResp.ok) {
+              const healthData = await healthResp.json();
+              if (healthData.status === 'ok') {
+                return Response.redirect(env.AUTODL_PUBLIC_URL, 302);
+              }
+            }
+          } catch (e) {}
+          return startingPage(env, '实例已开机，服务启动中...', 5);
         }
         return startingPage(env, '实例已开机，但未配置公网地址', 10);
       }

@@ -361,12 +361,16 @@ async def guide_list():
 
 @app.get("/health")
 async def health():
-    """健康检查"""
-    return {
-        "status": "ok",
-        "llm_mode": "mock" if llm and llm.mock else "real",
-        "model": settings.LLM_MODEL,
-    }
+    """健康检查 — 验证vLLM是否真正就绪"""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get(f"{settings.LLM_BASE_URL}/models")
+            if r.status_code == 200:
+                return {"status": "ok", "llm_mode": "real", "model": settings.LLM_MODEL}
+    except Exception:
+        pass
+    return {"status": "not_ready", "llm_mode": "real", "model": settings.LLM_MODEL}
 
 
 @app.get("/autodl/status")
