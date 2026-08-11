@@ -4,6 +4,17 @@
 - 自然语言转Cypher（由LLM完成）
 - 直接执行Cypher查询
 - 开发模式：内存模拟图谱（使用全国景点数据）
+
+【当前状态】
+- Neo4j连接可选：连接失败时自动降级为内存模拟模式，使用scenic_data.py中的RELATIONS数据
+- 内存模式支持：同城景点、建于朝代、所属类别、等级等关系查询
+- LLM转Cypher功能已实现，但在内存模式下仅做关键词匹配
+
+【未来改进方向】
+- 运行build_kg.py生成完整NER抽取结果后导入Neo4j，提升图谱覆盖度
+- 支持多跳推理（如"和故宫同朝代建设的景点"需要2跳查询）
+- 增加图谱可视化接口，前端展示实体关系网络图
+- 集成图嵌入算法（如TransE），支持基于向量的关系推理
 """
 from tools.base import BaseTool, ToolParameter
 from config.settings import settings
