@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # ── vLLM 推理服务 ──
+  vllm:
+    image: vllm/vllm-openai:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL=Qwen/Qwen2.5-7B-Instruct
+    command: >
+      --model Qwen/Qwen2.5-7B-Instruct
+      --served-model-name Qwen2.5-7B-Instruct
+      --host 0.0.0.0
+      --port 8000
+      --gpu-memory-utilization 0.9
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ── Neo4j 知识图谱 ──
+  neo4j:
+    image: neo4j:5.26
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/scenic2024
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+
+  # ── FastAPI 应用 ──
+  api:
+    build: .
+    ports:
+      - "8088:8088"
+    environment:
+      - LLM_BASE_URL=http://vllm:8000/v1
+      - LLM_API_KEY=empty
+      - LLM_MODEL=Qwen2.5-7B-Instruct
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=scenic2024
+      - AMAP_API_KEY=${AMAP_API_KEY:-}
+      - DEV_MOCK_LLM=false
+      - PORT=8088
+    depends_on:
+      vllm:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+    volumes:
+      - ./:/app
+
+volumes:
+  neo4j_data:
+  vllm_cache:

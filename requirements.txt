@@ -1,0 +1,27 @@
+# LLM & Agent
+openai>=1.30.0
+
+# 知识图谱
+neo4j>=5.20.0
+
+# 向量数据库 & 嵌入
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# Web框架
+fastapi>=0.115.0
+uvicorn>=0.30.0
+
+# 工具 & 搜索
+httpx>=0.27.0
+pydantic>=2.8.0
+python-dotenv>=1.0.0
+ddgs>=4.0.0
+beautifulsoup4>=4.12.0
+
+# 开发 & 测试
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# AutoDL自动管理（可选依赖，SSH隧道功能需要）
+asyncssh>=2.14.0

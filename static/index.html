@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小景 · 景点知识助手</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; }
+  .sidebar { width: 260px; background: #202123; color: #ececf1; display: flex; flex-direction: column; flex-shrink: 0; transition: transform 0.2s; }
+  .sidebar-header { padding: 12px; border-bottom: 1px solid #353740; }
+  .new-chat-btn { width: 100%; padding: 10px; background: #1a73e8; color: white; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; text-align: center; }
+  .new-chat-btn:hover { background: #1557b0; }
+  .conv-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .conv-item { padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; color: #c5c5d2; display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+  .conv-item:hover { background: #2a2b32; }
+  .conv-item.active { background: #343541; color: white; }
+  .conv-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conv-item .del-btn { display: none; background: none; border: none; color: #999; cursor: pointer; font-size: 14px; padding: 0 4px; }
+  .conv-item:hover .del-btn { display: inline; }
+  .conv-item .del-btn:hover { color: #f44336; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .header { background: #1a73e8; color: white; padding: 12px 20px; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .header .menu-btn { display: none; background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 4px 8px; }
+  .header span { font-size: 12px; font-weight: 400; opacity: 0.8; }
+  .autodl-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: auto; }
+  .autodl-badge.ready { background: #4caf50; }
+  .autodl-badge.starting { background: #ff9800; }
+  .autodl-badge.offline { background: #9e9e9e; }
+  .autodl-badge.error { background: #f44336; }
+  .autodl-badge.low_balance { background: #f44336; }
+  .autodl-badge.gpu_busy { background: #ff5722; }
+  .chat-area { flex: 1; overflow-y: auto; padding: 20px; max-width: 800px; width: 100%; margin: 0 auto; }
+  .msg { margin-bottom: 16px; display: flex; gap: 10px; }
+  .msg.user { flex-direction: row-reverse; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .msg.assistant .avatar { background: #e3f2fd; }
+  .msg.user .avatar { background: #f5f5f5; }
+  .bubble { max-width: 70%; padding: 10px 14px; border-radius: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+  .msg.assistant .bubble { background: white; border: 1px solid #e0e0e0; }
+  .msg.user .bubble { background: #1a73e8; color: white; }
+  .input-area { background: white; border-top: 1px solid #e0e0e0; padding: 14px; }
+  .input-wrap { max-width: 800px; margin: 0 auto; display: flex; gap: 10px; }
+  .input-wrap input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 24px; font-size: 14px; outline: none; }
+  .input-wrap input:focus { border-color: #1a73e8; }
+  .input-wrap button { padding: 8px 20px; background: #1a73e8; color: white; border: none; border-radius: 24px; font-size: 14px; cursor: pointer; }
+  .input-wrap button:hover { background: #1557b0; }
+  .input-wrap button:disabled { background: #ccc; cursor: not-allowed; }
+  .welcome { text-align: center; padding: 50px 20px; color: #666; }
+  .welcome h2 { font-size: 20px; margin-bottom: 8px; color: #333; }
+  .welcome p { font-size: 13px; margin-bottom: 16px; }
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .suggestions button { padding: 6px 14px; background: white; border: 1px solid #ddd; border-radius: 16px; font-size: 12px; cursor: pointer; color: #333; }
+  .suggestions button:hover { border-color: #1a73e8; color: #1a73e8; }
+  @media (max-width: 768px) {
+    .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transform: translateX(-100%); }
+    .sidebar.open { transform: translateX(0); }
+    .header .menu-btn { display: block; }
+  }
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 99; }
+  .overlay.show { display: block; }
+  /* 听讲解按钮 */
+  .guide-btn { display: inline-block; margin-top: 6px; padding: 3px 10px; font-size: 12px; background: #e8f0fe; color: #1a73e8; border: 1px solid #d2e3fc; border-radius: 12px; cursor: pointer; }
+  .guide-btn:hover { background: #d2e3fc; }
+  .guide-btn.loading { opacity: 0.6; pointer-events: none; }
+  /* 讲解面板 */
+  .guide-panel { position: fixed; top: 0; right: -420px; width: 400px; height: 100vh; background: white; box-shadow: -2px 0 12px rgba(0,0,0,0.15); z-index: 200; transition: right 0.3s ease; display: flex; flex-direction: column; }
+  .guide-panel.open { right: 0; }
+  .guide-panel-header { padding: 16px 20px; border-bottom: 1px solid #e0e0e0; display: flex; align-items: center; justify-content: space-between; }
+  .guide-panel-header h3 { font-size: 16px; color: #1a73e8; margin: 0; }
+  .guide-panel-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #666; padding: 0 4px; }
+  .guide-panel-close:hover { color: #333; }
+  .guide-panel-body { flex: 1; overflow-y: auto; padding: 20px; }
+  .guide-spot-name { font-size: 18px; font-weight: 600; color: #333; margin-bottom: 4px; }
+  .guide-spot-city { font-size: 13px; color: #888; margin-bottom: 16px; }
+  .guide-content { font-size: 15px; line-height: 1.8; color: #333; white-space: pre-wrap; }
+  .guide-panel-footer { padding: 12px 20px; border-top: 1px solid #e0e0e0; text-align: center; }
+  .guide-panel-footer .guide-list-btn { padding: 6px 16px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 16px; font-size: 13px; cursor: pointer; color: #555; }
+  .guide-panel-footer .guide-list-btn:hover { border-color: #1a73e8; color: #1a73e8; }
+  .guide-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.2); z-index: 199; }
+  .guide-overlay.show { display: block; }
+  @media (max-width: 768px) {
+    .guide-panel { width: 100%; right: -100%; }
+  }
+</style>
+</head>
+<body>
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <button class="new-chat-btn" onclick="newConversation()">+ 开启新对话</button>
+  </div>
+  <div class="conv-list" id="convList"></div>
+</div>
+<div class="main">
+  <div class="header">
+    <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+    小景 · 景点知识助手 <span>v0.2</span>
+    <span id="autodlBadge" class="autodl-badge offline" style="display:none">检查中</span>
+  </div>
+  <div class="chat-area" id="chatArea">
+    <div class="welcome" id="welcomeArea">
+      <h2>你好，我是小景</h2>
+      <p>基于大模型+知识图谱的景点智能助手，问我任何景点问题吧</p>
+      <div class="suggestions">
+        <button onclick="ask('广州塔有多高？')">广州塔有多高？</button>
+        <button onclick="ask('推荐一条西安一日游路线')">推荐一条西安一日游路线</button>
+        <button onclick="ask('黄鹤楼在哪个城市？')">黄鹤楼在哪个城市？</button>
+        <button onclick="ask('鼓浪屿怎么玩？')">鼓浪屿怎么玩？</button>
+        <button onclick="ask('哈尔滨冰雪大世界什么时候开放？')">哈尔滨冰雪大世界什么时候开放？</button>
+        <button onclick="ask('从凤凰新村到白云山怎么走')">从凤凰新村到白云山怎么走</button>
+        <button onclick="showGuideList();document.getElementById('guidePanel').classList.add('open');document.getElementById('guideOverlay').classList.add('show')">景点讲解</button>
+      </div>
+    </div>
+  </div>
+  <div class="input-area">
+    <div class="input-wrap">
+      <input type="text" id="inputBox" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')send()" />
+      <button id="sendBtn" onclick="send()">发送</button>
+    </div>
+  </div>
+</div>
+<div class="guide-overlay" id="guideOverlay" onclick="closeGuidePanel()"></div>
+<div class="guide-panel" id="guidePanel">
+  <div class="guide-panel-header">
+    <h3>景点讲解</h3>
+    <button class="guide-panel-close" onclick="closeGuidePanel()">&times;</button>
+  </div>
+  <div class="guide-panel-body" id="guidePanelBody">
+    <div id="guideContent"></div>
+  </div>
+  <div class="guide-panel-footer">
+    <button class="guide-list-btn" onclick="showGuideList()">查看所有可讲解景点</button>
+  </div>
+</div>
+<script>
+const chatArea = document.getElementById('chatArea');
+const inputBox = document.getElementById('inputBox');
+const sendBtn = document.getElementById('sendBtn');
+const convList = document.getElementById('convList');
+const welcomeArea = document.getElementById('welcomeArea');
+
+const _key = new URLSearchParams(window.location.search).get('key') || '';
+const _keyQ = _key ? '?key=' + encodeURIComponent(_key) : '';
+const _keyA = _key ? '&key=' + encodeURIComponent(_key) : '';
+
+let currentConvId = null;
+let convs = [];
+let knownSpots = [];  // 从/guide接口获取的景点列表
+
+// 加载可讲解景点列表
+async function loadKnownSpots() {
+  try {
+    const r = await fetch('/guide' + _keyQ);
+    if (r.ok) {
+      const d = await r.json();
+      knownSpots = d.spots || [];
+    }
+  } catch(e) {}
+}
+loadKnownSpots();
+
+// 从文本中检测景点名
+function detectSpots(text) {
+  if (!knownSpots.length) return [];
+  var found = [];
+  for (var i = 0; i < knownSpots.length; i++) {
+    var name = knownSpots[i].name;
+    if (text.indexOf(name) !== -1) {
+      found.push(knownSpots[i]);
+    }
+  }
+  return found;
+}
+
+// 打开讲解面板
+function openGuidePanel(spotName) {
+  var panel = document.getElementById('guidePanel');
+  var overlay = document.getElementById('guideOverlay');
+  var body = document.getElementById('guidePanelBody');
+  body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+  panel.classList.add('open');
+  overlay.classList.add('show');
+
+  fetch('/guide/' + encodeURIComponent(spotName) + _keyQ)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        body.innerHTML = '<div style="color:#f44336;padding:20px">' + escHtml(d.error) + '</div>';
+        return;
+      }
+      body.innerHTML = '<div class="guide-spot-name">' + escHtml(d.spot_name) + '</div>'
+        + (d.city ? '<div class="guide-spot-city">' + escHtml(d.city) + '</div>' : '')
+        + '<div class="guide-content">' + escHtml(d.guide) + '</div>';
+    })
+    .catch(function(e) {
+      body.innerHTML = '<div style="color:#f44336;padding:20px">加载失败: ' + escHtml(e.message) + '</div>';
+    });
+}
+
+function closeGuidePanel() {
+  document.getElementById('guidePanel').classList.remove('open');
+  document.getElementById('guideOverlay').classList.remove('show');
+}
+
+function showGuideList() {
+  var body = document.getElementById('guidePanelBody');
+  if (!knownSpots.length) {
+    body.innerHTML = '<div style="color:#999;padding:20px">暂无可讲解景点</div>';
+    return;
+  }
+  var html = '<div style="font-size:15px;font-weight:600;margin-bottom:12px;color:#333">可讲解景点 (' + knownSpots.length + ')</div>';
+  for (var i = 0; i < knownSpots.length; i++) {
+    var s = knownSpots[i];
+    html += '<div style="padding:8px 0;border-bottom:1px solid #f0f0f0;cursor:pointer" onclick="openGuidePanel(\'' + escHtml(s.name).replace(/'/g, "\\'") + '\')">'
+      + '<span style="font-size:14px;color:#1a73e8">' + escHtml(s.name) + '</span>'
+      + (s.city ? '<span style="font-size:12px;color:#999;margin-left:8px">' + escHtml(s.city) + '</span>' : '')
+      + '</div>';
+  }
+  body.innerHTML = html;
+}
+
+// AutoDL状态轮询
+const badge = document.getElementById('autodlBadge');
+const statusLabels = { offline:'离线', starting:'启动中', ready:'就绪', error:'出错', low_balance:'余额不足', gpu_busy:'GPU繁忙' };
+async function pollAutodlStatus() {
+  try {
+    const r = await fetch('/autodl/status' + _keyQ);
+    if (r.ok) {
+      const d = await r.json();
+      badge.style.display = 'inline';
+      badge.textContent = statusLabels[d.status] || d.status;
+      badge.className = 'autodl-badge ' + d.status;
+      if (d.status==='low_balance') { badge.textContent='余额不足！'; badge.title=d.message; }
+      else if (d.status==='gpu_busy') { badge.textContent='GPU繁忙'; badge.title=d.message; }
+      else if (d.status==='starting') badge.title=d.message;
+    }
+  } catch(e) {}
+}
+pollAutodlStatus();
+setInterval(pollAutodlStatus, 15000);
+
+// 侧边栏
+function toggleSidebar(forceClose) {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('overlay');
+  if (forceClose === false || sb.classList.contains('open')) {
+    sb.classList.remove('open');
+    ov.classList.remove('show');
+  } else {
+    sb.classList.add('open');
+    ov.classList.add('show');
+  }
+}
+
+// 对话管理
+async function loadConversations() {
+  const r = await fetch('/api/conversations' + _keyQ);
+  const d = await r.json();
+  convs = d.conversations || [];
+  renderConvList();
+  if (convs.length === 0) {
+    await newConversation();
+  } else if (!currentConvId) {
+    switchConversation(convs[0].id);
+  }
+}
+
+function renderConvList() {
+  convList.innerHTML = '';
+  convs.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'conv-item' + (c.id === currentConvId ? ' active' : '');
+    div.innerHTML = '<span class="title">' + escHtml(c.title) + '</span><button class="del-btn" onclick="event.stopPropagation();deleteConv(\'' + c.id + '\')">×</button>';
+    div.onclick = () => switchConversation(c.id);
+    convList.appendChild(div);
+  });
+}
+
+async function newConversation() {
+  const r = await fetch('/api/conversations' + _keyQ, { method: 'POST' });
+  const conv = await r.json();
+  convs.unshift(conv);
+  currentConvId = conv.id;
+  chatArea.innerHTML = '';
+  chatArea.appendChild(createWelcome());
+  renderConvList();
+  toggleSidebar(false);
+  inputBox.focus();
+}
+
+async function switchConversation(id) {
+  currentConvId = id;
+  renderConvList();
+  const r = await fetch('/api/conversations/' + id + '/messages' + _keyQ);
+  const d = await r.json();
+  chatArea.innerHTML = '';
+  const msgs = d.messages || [];
+  if (msgs.length === 0) {
+    chatArea.appendChild(createWelcome());
+  } else {
+    msgs.forEach(m => addMsg(m.role, m.content, false));
+  }
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+async function deleteConv(id) {
+  await fetch('/api/conversations/' + id + _keyQ, { method: 'DELETE' });
+  convs = convs.filter(c => c.id !== id);
+  if (currentConvId === id) {
+    if (convs.length > 0) switchConversation(convs[0].id);
+    else newConversation();
+  }
+  renderConvList();
+}
+
+function createWelcome() {
+  const div = document.createElement('div');
+  div.className = 'welcome';
+  div.id = 'welcomeArea';
+  div.innerHTML = '<h2>你好，我是小景</h2><p>基于大模型+知识图谱的景点智能助手</p>';
+  return div;
+}
+
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// 消息
+function addMsg(role, text, scroll) {
+  if (scroll === undefined) scroll = true;
+  const w = chatArea.querySelector('.welcome');
+  if (w) w.remove();
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  const av = document.createElement('div');
+  av.className = 'avatar';
+  av.textContent = role === 'user' ? '你' : '景';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  div.appendChild(av);
+  div.appendChild(bubble);
+  // 为assistant消息检测景点名，添加"听讲解"按钮
+  if (role === 'assistant' && text) {
+    var spots = detectSpots(text);
+    if (spots.length > 0) {
+      var btnWrap = document.createElement('div');
+      btnWrap.style.marginTop = '4px';
+      btnWrap.style.paddingLeft = '42px';
+      for (var si = 0; si < spots.length; si++) {
+        var btn = document.createElement('button');
+        btn.className = 'guide-btn';
+        btn.textContent = '听讲解: ' + spots[si].name;
+        btn.setAttribute('data-spot', spots[si].name);
+        btn.onclick = (function(name) { return function() { openGuidePanel(name); }; })(spots[si].name);
+        btnWrap.appendChild(btn);
+      }
+      div.appendChild(btnWrap);
+    }
+  }
+  chatArea.appendChild(div);
+  if (scroll) chatArea.scrollTop = chatArea.scrollHeight;
+  return bubble;
+}
+
+function ask(q) { inputBox.value = q; send(); }
+
+async function send() {
+  const q = inputBox.value.trim();
+  if (!q || sendBtn.disabled) return;
+  inputBox.value = '';
+  sendBtn.disabled = true;
+
+  if (!currentConvId) {
+    const r = await fetch('/api/conversations' + _keyQ, { method: 'POST' });
+    const conv = await r.json();
+    currentConvId = conv.id;
+    convs.unshift(conv);
+  }
+
+  addMsg('user', q);
+
+  var conv = convs.find(function(c) { return c.id === currentConvId; });
+  if (conv && conv.title === '新对话') {
+    var newTitle = q.substring(0, 20) + (q.length > 20 ? '...' : '');
+    conv.title = newTitle;
+    renderConvList();
+    fetch('/api/conversations/' + currentConvId + _keyQ, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: newTitle}) });
+  }
+
+  var bubble = addMsg('assistant', '');
+  bubble.classList.add('typing');
+  bubble.innerHTML = '<span style="color:#999">思考中...</span>';
+
+  var fullText = '';
+  var answerStarted = false;
+  try {
+    var ctrl = new AbortController();
+    var timeout = setTimeout(function() { ctrl.abort(); }, 120000);
+    var resp = await fetch('/chat/stream' + _keyQ, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, conversation_id: currentConvId }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      bubble.classList.remove('typing');
+      bubble.textContent = '请求失败：HTTP ' + resp.status;
+      sendBtn.disabled = false;
+      return;
+    }
+
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, { stream: true });
+
+      var lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line.indexOf('[进度]') === 0) {
+          bubble.innerHTML = '<span style="color:#999">' + escHtml(line) + '</span>';
+          chatArea.scrollTop = chatArea.scrollHeight;
+        } else {
+          if (!answerStarted) {
+            answerStarted = true;
+            bubble.classList.remove('typing');
+            bubble.textContent = '';
+          }
+          fullText += line + '\n';
+          bubble.textContent = fullText.trimEnd();
+          chatArea.scrollTop = chatArea.scrollHeight;
+        }
+      }
+    }
+    if (buffer) {
+      if (buffer.indexOf('[进度]') === 0) {
+        bubble.innerHTML = '<span style="color:#999">' + escHtml(buffer) + '</span>';
+      } else {
+        if (!answerStarted) {
+          answerStarted = true;
+          bubble.classList.remove('typing');
+          bubble.textContent = '';
+        }
+        fullText += buffer;
+        bubble.textContent = fullText.trimEnd();
+      }
+    }
+    if (!answerStarted) {
+      bubble.classList.remove('typing');
+      bubble.textContent = fullText || '未获取到回答';
+    }
+    // 流式回答完成后，检测景点并添加讲解按钮
+    if (fullText) {
+      var spots = detectSpots(fullText);
+      if (spots.length > 0) {
+        var msgDiv = bubble.parentElement;
+        var existing = msgDiv.querySelector('.guide-btn');
+        if (!existing) {
+          var btnWrap = document.createElement('div');
+          btnWrap.style.marginTop = '4px';
+          btnWrap.style.paddingLeft = '42px';
+          for (var si = 0; si < spots.length; si++) {
+            var btn = document.createElement('button');
+            btn.className = 'guide-btn';
+            btn.textContent = '听讲解: ' + spots[si].name;
+            btn.setAttribute('data-spot', spots[si].name);
+            btn.onclick = (function(name) { return function() { openGuidePanel(name); }; })(spots[si].name);
+            btnWrap.appendChild(btn);
+          }
+          msgDiv.appendChild(btnWrap);
+        }
+      }
+    }
+    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user', content: q })
+    });
+    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'assistant', content: fullText })
+    });
+  } catch (e) {
+    bubble.classList.remove('typing');
+    if (e.name === 'AbortError') {
+      bubble.textContent = fullText || '请求超时，请稍后重试。';
+    } else {
+      bubble.textContent = '请求出错：' + e.message;
+    }
+  }
+  sendBtn.disabled = false;
+  inputBox.focus();
+}
+
+// 初始化
+loadConversations();
+</script>
+</body>
+</html>
