@@ -2,20 +2,25 @@
  * Cloudflare Worker — AutoDL开机触发器
  *
  * 部署方法（免费）：
- * 1. 注册 https://dash.cloudflare.com/ → Workers & Pages → 创建
- * 2. 粘贴此代码
+ * 1. 注册 https://dash.cloudflare.com/ → Workers & Pages → Create Worker（不要选Connect to Git）
+ * 2. 粘贴此代码，Deploy
  * 3. 设置环境变量（Settings → Variables）：
- *    AUTODL_API_TOKEN     — 你的AutoDL Authorization Token
- *    AUTODL_INSTANCE_ID   — 实例UUID
- *    AUTODL_PUBLIC_URL    — 公网地址（AutoDL 6006端口映射URL）
- *    ACCESS_KEY           — 访问密码（可选，留空不认证）
+ *    AUTODL_API_TOKEN     — 你的AutoDL开发者Token（控制台→设置→开发者Token）
+ *    AUTODL_INSTANCE_ID   — 实例UUID（如 f6454295d3-1db02697）
+ *    AUTODL_PUBLIC_URL    — AutoDL 6006端口HTTPS映射地址（如 https://u1-xxx.seetacloud.com:8443）
+ *    ACCESS_KEY           — 访问密码（用户需带 ?key=xxx 访问，留空不认证）
  * 4. 部署后得到的URL就是给测试者的网址
  *
  * 工作流程：
- * 别人访问 Worker URL → Worker检测实例状态 →
- *   如果已开机且服务可用 → 302重定向到AutoDL公网地址
+ * 别人访问 Worker URL（带?key=密码）→ Worker检测实例状态 →
+ *   如果已开机 → 302重定向到AutoDL公网地址
  *   如果关机 → 自动开机 → 返回"启动中"页面（自动刷新）
  *   如果余额不足 → 显示余额不足提示
+ *
+ * 注意事项：
+ * - AUTODL_PUBLIC_URL 必须是HTTPS地址（AutoDL端口映射默认提供HTTPS）
+ * - Cloudflare Workers无法访问非标准端口的HTTP服务，因此不做健康检查，直接重定向
+ * - AutoDL开发者Token需实名认证后获取，过期需重新生成
  *
  * 【当前状态】
  * - 完整实现了自动开机、状态检测、余额不足提示、GPU繁忙提示、重定向等功能
@@ -50,22 +55,12 @@ export default {
       const status = instanceInfo?.status || 'unknown';
 
       if (status === 'running' || status === 'Running' || status === '使用中') {
-        // 实例已开机 → 检查公网服务是否可用
+        // 实例已开机 → 直接重定向到公网地址
+        // 注意：Cloudflare Workers无法访问非标准端口的HTTP服务，因此不做健康检查
         if (env.AUTODL_PUBLIC_URL) {
-          try {
-            const healthResp = await fetch(`${env.AUTODL_PUBLIC_URL}/health`, {
-              signal: AbortSignal.timeout(5000),
-            });
-            if (healthResp.ok) {
-              // 服务已就绪 → 重定向到公网地址
-              const redirectUrl = env.AUTODL_PUBLIC_URL + (url.search ? url.search : '');
-              return Response.redirect(redirectUrl, 302);
-            }
-          } catch (e) {
-            // 服务还没启动好，返回启动中页面
-          }
+          return Response.redirect(env.AUTODL_PUBLIC_URL, 302);
         }
-        return startingPage(env, '实例已开机，服务启动中...', 5);
+        return startingPage(env, '实例已开机，但未配置公网地址', 10);
       }
 
       // 实例关机 → 触发开机
