@@ -86,14 +86,22 @@ def init_db():
 # ── 用户 ──
 
 def get_or_create_user(user_id: Optional[str] = None) -> dict:
-    """获取用户，未指定则返回默认访客"""
+    """获取或创建用户，未指定则返回默认访客"""
     uid = user_id or _DEFAULT_USER_ID
     conn = _get_conn()
     try:
         row = conn.execute("SELECT id, name FROM users WHERE id = ?", (uid,)).fetchone()
         if row:
             return {"id": row["id"], "name": row["name"]}
-        return {"id": _DEFAULT_USER_ID, "name": _DEFAULT_USER_NAME}
+        # 自动创建新访客
+        now = time.time()
+        name = f"访客{uid[-4:]}" if uid.startswith("u_") else _DEFAULT_USER_NAME
+        conn.execute(
+            "INSERT INTO users (id, name, created_at) VALUES (?, ?, ?)",
+            (uid, name, now),
+        )
+        conn.commit()
+        return {"id": uid, "name": name}
     finally:
         conn.close()
 
@@ -182,7 +190,7 @@ def get_messages(conv_id: str) -> list[dict]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at",
+            "SELECT id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY rowid",
             (conv_id,),
         ).fetchall()
         return [{"id": r["id"], "role": r["role"], "content": r["content"], "created_at": r["created_at"]} for r in rows]

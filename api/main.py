@@ -257,13 +257,15 @@ async def clear_memory(req: ClearMemoryRequest):
 
 # ── 对话管理API ──
 @app.get("/api/conversations")
-async def api_list_conversations():
-    return {"conversations": list_conversations()}
+async def api_list_conversations(uid: str = ""):
+    user_id = uid or None
+    return {"conversations": list_conversations(user_id)}
 
 
 @app.post("/api/conversations")
-async def api_create_conversation():
-    conv = create_conversation()
+async def api_create_conversation(uid: str = ""):
+    user_id = uid or None
+    conv = create_conversation(user_id)
     return conv
 
 

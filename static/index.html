@@ -144,6 +144,10 @@ const _key = new URLSearchParams(window.location.search).get('key') || '';
 const _keyQ = _key ? '?key=' + encodeURIComponent(_key) : '';
 const _keyA = _key ? '&key=' + encodeURIComponent(_key) : '';
 
+// 每个访客独立ID，存在localStorage，保证对话隔离
+if (!localStorage.getItem('_uid')) localStorage.setItem('_uid', 'u_' + Math.random().toString(36).substr(2, 8));
+const _uid = localStorage.getItem('_uid');
+
 let currentConvId = null;
 let convs = [];
 let knownSpots = [];  // 从/guide接口获取的景点列表
@@ -255,7 +259,7 @@ function toggleSidebar(forceClose) {
 
 // 对话管理
 async function loadConversations() {
-  const r = await fetch('/api/conversations' + _keyQ);
+  const r = await fetch('/api/conversations' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid);
   const d = await r.json();
   convs = d.conversations || [];
   renderConvList();
@@ -278,7 +282,7 @@ function renderConvList() {
 }
 
 async function newConversation() {
-  const r = await fetch('/api/conversations' + _keyQ, { method: 'POST' });
+  const r = await fetch('/api/conversations' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, { method: 'POST' });
   const conv = await r.json();
   convs.unshift(conv);
   currentConvId = conv.id;
@@ -292,7 +296,7 @@ async function newConversation() {
 async function switchConversation(id) {
   currentConvId = id;
   renderConvList();
-  const r = await fetch('/api/conversations/' + id + '/messages' + _keyQ);
+  const r = await fetch('/api/conversations/' + id + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid);
   const d = await r.json();
   chatArea.innerHTML = '';
   const msgs = d.messages || [];
@@ -306,7 +310,7 @@ async function switchConversation(id) {
 }
 
 async function deleteConv(id) {
-  await fetch('/api/conversations/' + id + _keyQ, { method: 'DELETE' });
+  await fetch('/api/conversations/' + id + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, { method: 'DELETE' });
   convs = convs.filter(c => c.id !== id);
   if (currentConvId === id) {
     if (convs.length > 0) switchConversation(convs[0].id);
@@ -372,7 +376,7 @@ async function send() {
   sendBtn.disabled = true;
 
   if (!currentConvId) {
-    const r = await fetch('/api/conversations' + _keyQ, { method: 'POST' });
+    const r = await fetch('/api/conversations' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, { method: 'POST' });
     const conv = await r.json();
     currentConvId = conv.id;
     convs.unshift(conv);
@@ -385,7 +389,7 @@ async function send() {
     var newTitle = q.substring(0, 20) + (q.length > 20 ? '...' : '');
     conv.title = newTitle;
     renderConvList();
-    fetch('/api/conversations/' + currentConvId + _keyQ, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: newTitle}) });
+    fetch('/api/conversations/' + currentConvId + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({title: newTitle}) });
   }
 
   var bubble = addMsg('assistant', '');
@@ -479,12 +483,12 @@ async function send() {
         }
       }
     }
-    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ, {
+    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user', content: q })
     });
-    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ, {
+    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'assistant', content: fullText })
