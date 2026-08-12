@@ -46,6 +46,9 @@
   .input-wrap button { padding: 8px 20px; background: #1a73e8; color: white; border: none; border-radius: 24px; font-size: 14px; cursor: pointer; }
   .input-wrap button:hover { background: #1557b0; }
   .input-wrap button:disabled { background: #ccc; cursor: not-allowed; }
+  .stop-btn { display: none; padding: 8px 16px; background: #ef5350; color: white; border: none; border-radius: 24px; font-size: 14px; cursor: pointer; }
+  .stop-btn:hover { background: #d32f2f; }
+  .stop-btn.show { display: inline-block; }
   .welcome { text-align: center; padding: 50px 20px; color: #666; }
   .welcome h2 { font-size: 20px; margin-bottom: 8px; color: #333; }
   .welcome p { font-size: 13px; margin-bottom: 16px; }
@@ -126,6 +129,7 @@
     <div class="input-wrap">
       <input type="text" id="inputBox" placeholder="输入你的问题..." onkeydown="if(event.key==='Enter')send()" />
       <button id="sendBtn" onclick="send()">发送</button>
+      <button id="stopBtn" class="stop-btn" onclick="stopGeneration()">停止</button>
     </div>
   </div>
 </div>
@@ -164,6 +168,7 @@ const _uid = localStorage.getItem('_uid');
 let currentConvId = null;
 let convs = [];
 let knownSpots = [];  // 从/guide接口获取的景点列表
+var currentAbortCtrl = null;  // 当前请求的AbortController，用于停止生成
 
 // 加载可讲解景点列表
 async function loadKnownSpots() {
@@ -429,6 +434,15 @@ function addMsg(role, text, scroll) {
 
 function ask(q) { inputBox.value = q; send(); }
 
+function stopGeneration() {
+  if (currentAbortCtrl) {
+    currentAbortCtrl.abort();
+    currentAbortCtrl = null;
+  }
+  document.getElementById('stopBtn').classList.remove('show');
+  sendBtn.disabled = false;
+}
+
 async function send() {
   const q = inputBox.value.trim();
   if (!q || sendBtn.disabled) return;
@@ -459,13 +473,14 @@ async function send() {
   var fullText = '';
   var answerStarted = false;
   try {
-    var ctrl = new AbortController();
-    var timeout = setTimeout(function() { ctrl.abort(); }, 120000);
+    currentAbortCtrl = new AbortController();
+    var timeout = setTimeout(function() { if (currentAbortCtrl) currentAbortCtrl.abort(); }, 120000);
+    document.getElementById('stopBtn').classList.add('show');
     var resp = await fetch('/chat/stream' + _keyQ, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, conversation_id: currentConvId }),
-      signal: ctrl.signal
+      signal: currentAbortCtrl.signal
     });
     clearTimeout(timeout);
 
@@ -560,11 +575,13 @@ async function send() {
   } catch (e) {
     bubble.classList.remove('typing');
     if (e.name === 'AbortError') {
-      bubble.textContent = fullText || '请求超时，请稍后重试。';
+      bubble.textContent = fullText || '已停止生成。';
     } else {
       bubble.textContent = '请求出错：' + e.message;
     }
   }
+  currentAbortCtrl = null;
+  document.getElementById('stopBtn').classList.remove('show');
   sendBtn.disabled = false;
   inputBox.focus();
 }

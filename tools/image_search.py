@@ -14,6 +14,7 @@
 - 缓存常用景点的图片搜索结果
 - 支持图片相似度对比（找"像千与千寻"的景点图片）
 """
+import concurrent.futures
 from tools.base import BaseTool, ToolParameter
 
 
@@ -35,6 +36,9 @@ class ImageSearchTool(BaseTool):
         "qunar.com",          # 去哪儿
     ]
 
+    # 独立线程池
+    _executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="imgsearch")
+
     def __init__(self):
         self._available = False
         try:
@@ -49,6 +53,7 @@ class ImageSearchTool(BaseTool):
 
         try:
             import asyncio
+            import concurrent.futures
             from ddgs import DDGS
 
             # 构造搜索词：追加"景点"确保相关性
@@ -56,13 +61,12 @@ class ImageSearchTool(BaseTool):
             if "照片" not in search_query and "图片" not in search_query and "图" not in search_query:
                 search_query += " 景点照片"
 
-            def _search():
-                return DDGS().images(search_query, region="cn-zh", max_results=6)
-
-            results = await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(None, _search),
-                timeout=15
+            loop = asyncio.get_running_loop()
+            future = loop.run_in_executor(
+                self._executor,
+                lambda: DDGS().images(search_query, region="cn-zh", max_results=6)
             )
+            results = await asyncio.wait_for(future, timeout=12)
 
             if not results:
                 return f"未搜索到与 '{input_str}' 相关的图片。"
