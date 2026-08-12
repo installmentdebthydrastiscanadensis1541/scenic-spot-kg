@@ -328,6 +328,7 @@ class ReActAgent:
                 "web_search": "搜索互联网",
                 "web_fetch": "抓取网页详情",
                 "map_tool": "查询地图路线",
+                "image_search": "搜索景点图片",
             }
             label = tool_labels.get(tool_label, tool_label)
             yield f"[进度] {label}中...\n"

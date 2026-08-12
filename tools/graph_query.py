@@ -60,7 +60,7 @@ class GraphQueryTool(BaseTool):
         return self._query_mock(input_str)
 
     def _query_mock(self, query: str) -> str:
-        """内存模拟查询（使用全国景点数据）"""
+        """内存模拟查询（使用全国景点数据，支持tags/适合人群/强度/核心特色）"""
         results = []
 
         # 查找包含查询实体的关系
@@ -68,9 +68,38 @@ class GraphQueryTool(BaseTool):
             if query in rel["src"] or query in rel["tgt"] or query in rel["rel"]:
                 results.append(f"{rel['src']} -[{rel['rel']}]-> {rel['tgt']}")
 
-        # 查找景点属性
+        # 查找景点属性（增强：包含tags/适合人群/强度/核心特色）
         for spot in SCENIC_SPOTS:
+            matched = False
+            # 名称/城市/类别匹配
             if query in spot["name"] or query in spot.get("city", "") or query in spot.get("category", ""):
+                matched = True
+            # tags匹配
+            if not matched and spot.get("tags"):
+                for tag in spot["tags"]:
+                    if query in tag or tag in query:
+                        matched = True
+                        break
+            # suitable_for匹配
+            if not matched and spot.get("suitable_for"):
+                for sf in spot["suitable_for"]:
+                    if query in sf or sf in query:
+                        matched = True
+                        break
+            # core_feature匹配
+            if not matched and spot.get("core_feature") and query in spot["core_feature"]:
+                matched = True
+            # intensity匹配
+            if not matched and spot.get("intensity") and query in spot["intensity"]:
+                matched = True
+            # level匹配
+            if not matched and spot.get("level") and query in spot["level"]:
+                matched = True
+            # dynasty匹配
+            if not matched and spot.get("dynasty") and query in spot.get("dynasty", ""):
+                matched = True
+
+            if matched:
                 info = f"景点: {spot['name']} | 城市: {spot['city']} | 类别: {spot['category']}"
                 if spot.get("level"):
                     info += f" | 等级: {spot['level']}"
@@ -78,6 +107,14 @@ class GraphQueryTool(BaseTool):
                     info += f" | 朝代: {spot['dynasty']}"
                 if spot.get("duration"):
                     info += f" | 游览时长: {spot['duration']}"
+                if spot.get("tags"):
+                    info += f" | 标签: {', '.join(spot['tags'])}"
+                if spot.get("suitable_for"):
+                    info += f" | 适合: {', '.join(spot['suitable_for'])}"
+                if spot.get("intensity"):
+                    info += f" | 强度: {spot['intensity']}"
+                if spot.get("core_feature"):
+                    info += f" | 核心特色: {spot['core_feature']}"
                 results.append(info)
 
         # 查找城市

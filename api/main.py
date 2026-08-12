@@ -18,6 +18,7 @@ from tools.route_plan import RoutePlanTool
 from tools.web_search import WebSearchTool
 from tools.web_fetch import WebFetchTool
 from tools.map_tool import MapTool
+from tools.image_search import ImageSearchTool
 from config.settings import settings
 from config.prompts import TOUR_GUIDE
 
@@ -64,6 +65,7 @@ async def startup():
         "web_search": WebSearchTool(),
         "web_fetch": WebFetchTool(),
         "map_tool": MapTool(),
+        "image_search": ImageSearchTool(),
     }
 
     # 知识库索引延迟到首次使用时构建（避免启动时加载模型卡住）

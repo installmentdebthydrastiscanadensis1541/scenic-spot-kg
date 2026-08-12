@@ -32,7 +32,7 @@ class Settings:
 
     # ── Agent ──
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "5"))
-    TOOLS: list = ["knowledge_search", "graph_query", "route_plan", "web_search", "web_fetch", "map_tool"]
+    TOOLS: list = ["knowledge_search", "graph_query", "route_plan", "web_search", "web_fetch", "map_tool", "image_search"]
 
     # ── 开发模式 ──
     DEV_MOCK_LLM: bool = os.getenv("DEV_MOCK_LLM", "false").lower() == "true"

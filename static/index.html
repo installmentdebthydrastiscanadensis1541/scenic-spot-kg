@@ -82,6 +82,15 @@
   @media (max-width: 768px) {
     .guide-panel { width: 100%; right: -100%; }
   }
+  /* 图片展示 */
+  .img-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .img-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #e0e0e0; transition: transform 0.15s; }
+  .img-thumb:hover { transform: scale(1.05); border-color: #1a73e8; }
+  .img-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 300; justify-content: center; align-items: center; }
+  .img-overlay.show { display: flex; }
+  .img-overlay img { max-width: 90vw; max-height: 85vh; border-radius: 8px; }
+  .img-overlay .close-btn { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; background: none; border: none; }
+
 </style>
 </head>
 <body>
@@ -121,6 +130,10 @@
   </div>
 </div>
 <div class="guide-overlay" id="guideOverlay" onclick="closeGuidePanel()"></div>
+<div class="img-overlay" id="imgOverlay" onclick="closeImgOverlay()">
+  <button class="close-btn" onclick="closeImgOverlay()">&times;</button>
+  <img id="imgOverlayImg" src="" alt="" />
+</div>
 <div class="guide-panel" id="guidePanel">
   <div class="guide-panel-header">
     <h3>景点讲解</h3>
@@ -329,6 +342,49 @@ function createWelcome() {
 
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
+// 图片展示
+function openImgOverlay(url) {
+  var overlay = document.getElementById('imgOverlay');
+  var img = document.getElementById('imgOverlayImg');
+  img.src = url;
+  overlay.classList.add('show');
+}
+function closeImgOverlay() {
+  var overlay = document.getElementById('imgOverlay');
+  var img = document.getElementById('imgOverlayImg');
+  overlay.classList.remove('show');
+  img.src = '';
+}
+function renderImagesInBubble(bubble, text) {
+  // 检测文本中的图片链接行: "图片链接: https://..."
+  var imgRegex = /图片链接:\s*(https?:\/\/[^\s\n]+)/g;
+  var urls = [];
+  var m;
+  while ((m = imgRegex.exec(text)) !== null) {
+    urls.push(m[1]);
+  }
+  if (urls.length === 0) return;
+
+  // 从文本中移除图片链接行和页面链接行
+  var cleanText = text.replace(/图片链接:\s*https?:\/\/[^\s\n]+/g, '').replace(/页面链接:\s*https?:\/\/[^\s\n]+/g, '').trim();
+
+  // 渲染文本+图片
+  bubble.textContent = cleanText;
+  var gallery = document.createElement('div');
+  gallery.className = 'img-gallery';
+  for (var i = 0; i < Math.min(urls.length, 5); i++) {
+    var img = document.createElement('img');
+    img.className = 'img-thumb';
+    img.src = urls[i];
+    img.alt = '景点图片';
+    img.loading = 'lazy';
+    img.onerror = function() { this.style.display = 'none'; };
+    img.onclick = (function(u) { return function() { openImgOverlay(u); }; })(urls[i]);
+    gallery.appendChild(img);
+  }
+  bubble.appendChild(gallery);
+}
+
 // 消息
 function addMsg(role, text, scroll) {
   if (scroll === undefined) scroll = true;
@@ -344,6 +400,10 @@ function addMsg(role, text, scroll) {
   bubble.textContent = text;
   div.appendChild(av);
   div.appendChild(bubble);
+  // 为assistant历史消息渲染图片
+  if (role === 'assistant' && text && /图片链接:/.test(text)) {
+    renderImagesInBubble(bubble, text);
+  }
   // 为assistant消息检测景点名，添加"听讲解"按钮
   if (role === 'assistant' && text) {
     var spots = detectSpots(text);
@@ -460,6 +520,10 @@ async function send() {
     if (!answerStarted) {
       bubble.classList.remove('typing');
       bubble.textContent = fullText || '未获取到回答';
+    }
+    // 流式回答完成后，渲染图片
+    if (fullText && /图片链接:/.test(fullText)) {
+      renderImagesInBubble(bubble, fullText);
     }
     // 流式回答完成后，检测景点并添加讲解按钮
     if (fullText) {
