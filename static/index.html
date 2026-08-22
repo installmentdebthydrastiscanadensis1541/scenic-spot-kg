@@ -23,13 +23,6 @@
   .header { background: #1a73e8; color: white; padding: 12px 20px; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .header .menu-btn { display: none; background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 4px 8px; }
   .header span { font-size: 12px; font-weight: 400; opacity: 0.8; }
-  .autodl-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: auto; }
-  .autodl-badge.ready { background: #4caf50; }
-  .autodl-badge.starting { background: #ff9800; }
-  .autodl-badge.offline { background: #9e9e9e; }
-  .autodl-badge.error { background: #f44336; }
-  .autodl-badge.low_balance { background: #f44336; }
-  .autodl-badge.gpu_busy { background: #ff5722; }
   .chat-area { flex: 1; overflow-y: auto; padding: 20px; max-width: 800px; width: 100%; margin: 0 auto; }
   .msg { margin-bottom: 16px; display: flex; gap: 10px; }
   .msg.user { flex-direction: row-reverse; }
@@ -248,25 +241,22 @@ function showGuideList() {
   body.innerHTML = html;
 }
 
-// AutoDL状态轮询
-const badge = document.getElementById('autodlBadge');
-const statusLabels = { offline:'离线', starting:'启动中', ready:'就绪', error:'出错', low_balance:'余额不足', gpu_busy:'GPU繁忙' };
+// AutoDL状态轮询（仅在AutoDL模式下显示）
 async function pollAutodlStatus() {
   try {
     const r = await fetch('/autodl/status' + _keyQ);
     if (r.ok) {
       const d = await r.json();
-      badge.style.display = 'inline';
-      badge.textContent = statusLabels[d.status] || d.status;
-      badge.className = 'autodl-badge ' + d.status;
-      if (d.status==='low_balance') { badge.textContent='余额不足！'; badge.title=d.message; }
-      else if (d.status==='gpu_busy') { badge.textContent='GPU繁忙'; badge.title=d.message; }
-      else if (d.status==='starting') badge.title=d.message;
+      const badge = document.getElementById('uidBadge');
+      if (badge && d.status === 'low_balance') {
+        badge.textContent = '余额不足';
+        badge.style.color = '#f44336';
+      }
     }
   } catch(e) {}
 }
 pollAutodlStatus();
-setInterval(pollAutodlStatus, 15000);
+setInterval(pollAutodlStatus, 30000);
 
 // 侧边栏
 function toggleSidebar(forceClose) {
