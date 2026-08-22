@@ -385,9 +385,9 @@ class ReActAgent:
         text = self._deduplicate_loops(text)
         # 去掉重复空行
         text = re.sub(r"\n{2,}", "\n", text)
-        # 图片URL保护：如果调用了image_search但LLM没保留"图片链接:"行，追加URL
-        # 防止LLM将URL改写为占位符（如"!黄鹤楼夜景"）导致前端无法渲染图片
+        # 图片URL保护：防止LLM编造或残留图片链接
         if self._image_urls:
+            # 调用了image_search，有真实URL
             if "图片链接:" not in text:
                 # 情况1：LLM完全删除了图片链接行 → 追加真实URL
                 img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
@@ -404,6 +404,12 @@ class ReActAgent:
                     text = re.sub(r'^[ \t]*图片链接:\s*https?://[^\s\n]+[ \t]*$', '', text, flags=re.MULTILINE)
                     img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
                     text = text.rstrip() + "\n" + "\n".join(img_lines)
+        else:
+            # 未调用image_search，但LLM可能凭记忆输出图片链接行 → 全部删除
+            if "图片链接:" in text:
+                text = re.sub(r'^[ \t]*图片链接:\s*https?://[^\s\n]+[ \t]*$', '', text, flags=re.MULTILINE)
+                # 也清理可能残留的"来源:"行和"页面链接:"行（通常跟在图片链接后面）
+                text = re.sub(r'^[ \t]*(来源|页面链接):\s*[^\n]+[ \t]*$', '', text, flags=re.MULTILINE)
         return text.strip()
 
     def _deduplicate_loops(self, text: str) -> str:

@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>小景 · 景点知识助手</title>
-<!-- 版本: v2.3 - 讲解互动+语音输入+图片防盗链修复 -->
+<!-- 版本: v2.4 - 讲解互动TTS分离+图片代理+先答后问 -->
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; }
@@ -104,6 +104,13 @@
   .guide-chat-msg.assistant { background: #f0f2f5; color: #333; }
   .guide-chat-msg.loading { color: #999; font-style: italic; }
   .guide-chat-title { font-size: 12px; color: #999; margin: 8px 0 6px; text-align: center; }
+  /* 互动消息播放按钮 */
+  .guide-chat-msg.assistant { display: flex; align-items: flex-start; gap: 6px; }
+  .guide-chat-msg.assistant .msg-text { flex: 1; }
+  .tts-msg-btn { flex-shrink: 0; width: 26px; height: 26px; border: none; background: rgba(0,0,0,0.05); cursor: pointer; font-size: 13px; opacity: 0.5; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .tts-msg-btn:hover { opacity: 1; background: #d2e3fc; }
+  .tts-msg-btn.playing { opacity: 1; background: #1a73e8; color: white; animation: ttsPulse 1s infinite; }
+  @keyframes ttsPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
   /* 讲解输入栏 */
   .guide-input-bar { padding: 10px 16px; border-top: 1px solid #e0e0e0; background: #fff; display: flex; gap: 8px; align-items: center; }
   .guide-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 8px 14px; font-size: 13px; outline: none; resize: none; max-height: 60px; }
@@ -360,12 +367,32 @@ function regenerateGuide() {
 // ── 讲解互动对话 ──
 var _guideChatHistory = [];  // 讲解对话历史 [{role, content}]
 var _guideChatSending = false;
+var _interactionTTSActive = false;  // 互动回答TTS是否正在播放
+var _interactionTTSChunks = [];     // 互动回答的文本块
+var _interactionTTSIdx = 0;         // 互动回答当前播放块索引
+var _interactionTTSBtn = null;      // 当前正在播放的按钮元素
 
 function sendGuideChat() {
   if (_guideChatSending || !_currentGuideSpot) return;
   var input = document.getElementById('guideInput');
   var q = input.value.trim();
   if (!q) return;
+
+  // 自动暂停讲解TTS（保存位置，用户可点播放键从中断处继续）
+  if (_ttsPlaying) {
+    speechSynthesis.cancel();
+    _ttsPlaying = false;
+    document.getElementById('ttsPlayBtn').textContent = '▶';
+    document.getElementById('ttsPlayBtn').classList.remove('playing');
+    // _ttsCharIndex 保持不变，点播放键可从断点继续
+  }
+  // 停止正在播放的互动TTS
+  _interactionTTSActive = false;
+  if (_interactionTTSBtn) {
+    _interactionTTSBtn.classList.remove('playing');
+    _interactionTTSBtn.innerHTML = '🔊';
+    _interactionTTSBtn = null;
+  }
 
   // 显示对话区
   document.getElementById('guideChatArea').style.display = 'block';
@@ -396,6 +423,8 @@ function sendGuideChat() {
       } else {
         appendGuideChatMsg('assistant', d.answer);
         _guideChatHistory.push({role: 'assistant', content: d.answer});
+        // 自动播放回答语音
+        playInteractionTTS(d.answer, null);
       }
     })
     .catch(function(e) {
@@ -408,11 +437,101 @@ function sendGuideChat() {
     });
 }
 
+// 播放互动回答TTS（独立于主讲解TTS，不影响_ttsCharIndex）
+function playInteractionTTS(text, btn) {
+  // 停止主讲解TTS
+  if (_ttsPlaying) {
+    speechSynthesis.cancel();
+    _ttsPlaying = false;
+    document.getElementById('ttsPlayBtn').textContent = '▶';
+    document.getElementById('ttsPlayBtn').classList.remove('playing');
+  }
+  // 停止上一个互动TTS
+  _interactionTTSActive = false;
+  if (_interactionTTSBtn) {
+    _interactionTTSBtn.classList.remove('playing');
+    _interactionTTSBtn.innerHTML = '🔊';
+  }
+  speechSynthesis.cancel();
+
+  _interactionTTSActive = true;
+  _interactionTTSChunks = splitTTSChunks(text);
+  _interactionTTSIdx = 0;
+  _interactionTTSBtn = btn;
+
+  if (btn) {
+    btn.classList.add('playing');
+    btn.innerHTML = '⏸';
+  }
+
+  speakInteractionNext();
+}
+
+function speakInteractionNext() {
+  if (!_interactionTTSActive || _interactionTTSIdx >= _interactionTTSChunks.length) {
+    _interactionTTSActive = false;
+    if (_interactionTTSBtn) {
+      _interactionTTSBtn.classList.remove('playing');
+      _interactionTTSBtn.innerHTML = '🔊';
+      _interactionTTSBtn = null;
+    }
+    return;
+  }
+
+  var chunk = _interactionTTSChunks[_interactionTTSIdx];
+  var utter = new SpeechSynthesisUtterance(chunk);
+  utter.lang = 'zh-CN';
+  utter.rate = 1.0;
+  var voiceType = document.getElementById('ttsVoiceSelect').value;
+  var voice = (voiceType === 'male' && _ttsMaleVoice) ? _ttsMaleVoice : _ttsFemaleVoice;
+  if (voice) utter.voice = voice;
+
+  utter.onend = function() {
+    _interactionTTSIdx++;
+    if (_interactionTTSActive) speakInteractionNext();
+  };
+  utter.onerror = function() {
+    _interactionTTSIdx++;
+    if (_interactionTTSActive) speakInteractionNext();
+  };
+
+  speechSynthesis.speak(utter);
+}
+
 function appendGuideChatMsg(role, text, isLoading) {
   var container = document.getElementById('guideChatMessages');
   var div = document.createElement('div');
   div.className = 'guide-chat-msg ' + role + (isLoading ? ' loading' : '');
-  div.textContent = text;
+
+  if (role === 'assistant' && !isLoading) {
+    // 助手消息：文本 + 播放按钮
+    var textSpan = document.createElement('span');
+    textSpan.className = 'msg-text';
+    textSpan.textContent = text;
+
+    var ttsBtn = document.createElement('button');
+    ttsBtn.className = 'tts-msg-btn';
+    ttsBtn.innerHTML = '🔊';
+    ttsBtn.title = '播放语音';
+    ttsBtn.onclick = function() {
+      if (_interactionTTSActive && _interactionTTSBtn === ttsBtn) {
+        // 正在播放这条消息，点击暂停
+        _interactionTTSActive = false;
+        speechSynthesis.cancel();
+        ttsBtn.classList.remove('playing');
+        ttsBtn.innerHTML = '🔊';
+        _interactionTTSBtn = null;
+      } else {
+        playInteractionTTS(text, ttsBtn);
+      }
+    };
+
+    div.appendChild(textSpan);
+    div.appendChild(ttsBtn);
+  } else {
+    div.textContent = text;
+  }
+
   container.appendChild(div);
   // 滚动到底部
   var body = document.getElementById('guidePanelBody');
@@ -552,6 +671,16 @@ function splitTTSChunks(text) {
 // 播放/暂停切换
 function toggleTTS() {
   if (!_ttsText) return;
+  // 停止互动TTS（顶部播放键只管主讲解内容）
+  if (_interactionTTSActive) {
+    _interactionTTSActive = false;
+    speechSynthesis.cancel();
+    if (_interactionTTSBtn) {
+      _interactionTTSBtn.classList.remove('playing');
+      _interactionTTSBtn.innerHTML = '🔊';
+      _interactionTTSBtn = null;
+    }
+  }
   if (_ttsPlaying) {
     speechSynthesis.pause();
     _ttsPlaying = false;
@@ -567,8 +696,7 @@ function toggleTTS() {
       _ttsCharIndex = 0;
       speakNextChunk();
     } else {
-      // 全新开始
-      _ttsCharIndex = 0;
+      // 全新开始或从断点继续（用户提问时被中断后恢复）
       speakNextChunk();
     }
     _ttsPlaying = true;
@@ -620,6 +748,13 @@ function stopTTS() {
   }
   _ttsPlaying = false;
   _ttsCharIndex = 0;
+  // 也停止互动TTS
+  _interactionTTSActive = false;
+  if (_interactionTTSBtn) {
+    _interactionTTSBtn.classList.remove('playing');
+    _interactionTTSBtn.innerHTML = '🔊';
+    _interactionTTSBtn = null;
+  }
   var btn = document.getElementById('ttsPlayBtn');
   if (btn) {
     btn.textContent = '▶';
