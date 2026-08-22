@@ -56,18 +56,9 @@ export default {
 
       if (status === 'running' || status === 'Running' || status === '使用中') {
         if (env.AUTODL_PUBLIC_URL) {
-          try {
-            const healthResp = await fetch(env.AUTODL_PUBLIC_URL + '/health', {
-              signal: AbortSignal.timeout(8000),
-            });
-            if (healthResp.ok) {
-              const healthData = await healthResp.json();
-              if (healthData.status === 'ok') {
-                return Response.redirect(env.AUTODL_PUBLIC_URL, 302);
-              }
-            }
-          } catch (e) {}
-          return startingPage(env, '实例已开机，服务启动中...', 5);
+          // 不在Worker端做健康检查（Cloudflare访问AutoDL HTTPS有SSL证书问题）
+          // 改为返回带JS的等待页面，由用户浏览器检测服务就绪后跳转
+          return healthCheckPage(env.AUTODL_PUBLIC_URL);
         }
         return startingPage(env, '实例已开机，但未配置公网地址', 10);
       }
@@ -153,6 +144,68 @@ async function powerOn(env) {
   const gpuKeywords = ['GPU', '显卡', '资源', '空闲', '不足', '繁忙', 'busy', 'no available', 'sold out'];
   const isGpuBusy = gpuKeywords.some(kw => msg.includes(kw));
   return isGpuBusy ? 'gpu_busy' : false;
+}
+
+function healthCheckPage(publicUrl) {
+  const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小景 · 服务启动中</title>
+<style>
+  body { font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f5f5f5; margin: 0; }
+  .card { background: white; border-radius: 12px; padding: 40px; max-width: 450px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .spinner { width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top-color: #1a73e8; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h2 { color: #333; margin: 0 0 12px; font-size: 20px; }
+  p { color: #666; margin: 0; line-height: 1.6; }
+  .tip { margin-top: 16px; font-size: 13px; color: #999; }
+  #status { margin-top: 8px; font-size: 14px; color: #1a73e8; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="spinner"></div>
+  <h2>小景 · 景点知识助手</h2>
+  <p>实例已开机，正在等待服务就绪...</p>
+  <p id="status">检测中...</p>
+  <p class="tip">服务就绪后将自动跳转，请勿关闭</p>
+</div>
+<script>
+const TARGET = ${JSON.stringify(publicUrl)};
+let attempts = 0;
+const maxAttempts = 60; // 最多检测60次，每次5秒，共5分钟
+
+async function checkHealth() {
+  attempts++;
+  if (attempts > maxAttempts) {
+    document.getElementById('status').textContent = '等待超时，请刷新页面重试';
+    return;
+  }
+  try {
+    const resp = await fetch(TARGET + '/health', { mode: 'cors' });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.status === 'ok') {
+        document.getElementById('status').textContent = '服务已就绪！正在跳转...';
+        window.location.href = TARGET;
+        return;
+      }
+    }
+    document.getElementById('status').textContent = '服务启动中... (' + attempts + '/' + maxAttempts + ')';
+  } catch (e) {
+    document.getElementById('status').textContent = '等待服务启动... (' + attempts + '/' + maxAttempts + ')';
+  }
+  setTimeout(checkHealth, 5000);
+}
+checkHealth();
+</script>
+</body>
+</html>`;
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
 }
 
 function startingPage(env, message, refreshSeconds) {

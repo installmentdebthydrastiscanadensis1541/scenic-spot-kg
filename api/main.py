@@ -6,6 +6,7 @@ import os
 import pathlib
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from core.llm_client import LLMClient
@@ -27,6 +28,14 @@ app = FastAPI(
     title="景点知识图谱API",
     description="基于大模型+智能体的景点深度知识图谱应用",
     version="0.2.0",
+)
+
+# 允许跨域（Cloudflare Worker健康检查页面需要从浏览器fetch /health）
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
 )
 
 # ── 简单访问认证（防止公网被滥用） ──
