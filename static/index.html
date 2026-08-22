@@ -96,6 +96,24 @@
   .regen-btn { padding: 4px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; cursor: pointer; background: #f5f5f5; color: #555; display: flex; align-items: center; gap: 4px; }
   .regen-btn:hover { border-color: #1a73e8; color: #1a73e8; }
   .regen-btn.loading { opacity: 0.6; pointer-events: none; }
+  /* 讲解互动对话区 */
+  .guide-chat-area { padding: 12px 16px; }
+  .guide-chat-msg { margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.6; max-width: 85%; word-wrap: break-word; }
+  .guide-chat-msg.user { background: #1a73e8; color: white; margin-left: auto; }
+  .guide-chat-msg.assistant { background: #f0f2f5; color: #333; }
+  .guide-chat-msg.loading { color: #999; font-style: italic; }
+  .guide-chat-title { font-size: 12px; color: #999; margin: 8px 0 6px; text-align: center; }
+  /* 讲解输入栏 */
+  .guide-input-bar { padding: 10px 16px; border-top: 1px solid #e0e0e0; background: #fff; display: flex; gap: 8px; align-items: center; }
+  .guide-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 8px 14px; font-size: 13px; outline: none; resize: none; max-height: 60px; }
+  .guide-input:focus { border-color: #1a73e8; }
+  .guide-send-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: #1a73e8; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .guide-send-btn:hover { background: #1557b0; }
+  .guide-send-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .guide-mic-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid #ddd; background: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+  .guide-mic-btn:hover { border-color: #1a73e8; }
+  .guide-mic-btn.recording { background: #ef5350; border-color: #ef5350; color: white; animation: micPulse 1.2s infinite; }
+  @keyframes micPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
   @media (max-width: 768px) {
     .guide-panel { width: 100%; right: -100%; }
   }
@@ -177,6 +195,15 @@
   </div>
   <div class="guide-panel-body" id="guidePanelBody">
     <div id="guideContent"></div>
+    <div class="guide-chat-area" id="guideChatArea" style="display:none">
+      <div class="guide-chat-title">— 想了解更多？向讲解员提问吧 —</div>
+      <div id="guideChatMessages"></div>
+    </div>
+  </div>
+  <div class="guide-input-bar" id="guideInputBar" style="display:none">
+    <button class="guide-mic-btn" id="guideMicBtn" onclick="toggleGuideMic()" title="语音输入">🎤</button>
+    <input class="guide-input" id="guideInput" placeholder="向讲解员提问..." onkeydown="if(event.key==='Enter')sendGuideChat()" />
+    <button class="guide-send-btn" id="guideSendBtn" onclick="sendGuideChat()">➤</button>
   </div>
   <div class="guide-panel-footer">
     <button class="guide-list-btn" onclick="showGuideList()">查看所有可讲解景点</button>
@@ -247,6 +274,8 @@ function openGuidePanel(spotName) {
   stopTTS();
   document.getElementById('ttsBar').style.display = 'none';
   document.getElementById('styleBar').style.display = 'none';
+  document.getElementById('guideInputBar').style.display = 'none';
+  document.getElementById('guideChatArea').style.display = 'none';
   // 重置风格选择为默认
   document.getElementById('styleSelect').value = 'vivid';
 
@@ -283,6 +312,12 @@ function fetchGuideContent(spotName, style) {
       document.getElementById('styleBar').style.display = 'flex';
       // 同步风格下拉框（如果后端返回了实际使用的style）
       if (d.style) document.getElementById('styleSelect').value = d.style;
+      // 显示互动输入栏（讲解加载成功后才能提问）
+      document.getElementById('guideInputBar').style.display = 'flex';
+      // 清空旧的对话历史
+      _guideChatHistory = [];
+      document.getElementById('guideChatMessages').innerHTML = '';
+      document.getElementById('guideChatArea').style.display = 'none';
     })
     .catch(function(e) {
       if (regenBtn) regenBtn.classList.remove('loading');
@@ -294,7 +329,149 @@ function fetchGuideContent(spotName, style) {
 function regenerateGuide() {
   if (!_currentGuideSpot) return;
   var style = document.getElementById('styleSelect').value;
+  // 清空对话历史
+  _guideChatHistory = [];
   fetchGuideContent(_currentGuideSpot, style);
+}
+
+// ── 讲解互动对话 ──
+var _guideChatHistory = [];  // 讲解对话历史 [{role, content}]
+var _guideChatSending = false;
+
+function sendGuideChat() {
+  if (_guideChatSending || !_currentGuideSpot) return;
+  var input = document.getElementById('guideInput');
+  var q = input.value.trim();
+  if (!q) return;
+
+  // 显示对话区
+  document.getElementById('guideChatArea').style.display = 'block';
+  document.getElementById('guideInputBar').style.display = 'flex';
+
+  // 追加用户消息
+  appendGuideChatMsg('user', q);
+  _guideChatHistory.push({role: 'user', content: q});
+  input.value = '';
+
+  // 显示加载中
+  var loadingEl = appendGuideChatMsg('assistant', '思考中...', true);
+  _guideChatSending = true;
+  document.getElementById('guideSendBtn').disabled = true;
+
+  // 调用后端
+  var style = document.getElementById('styleSelect').value;
+  fetch('/guide/' + encodeURIComponent(_currentGuideSpot) + '/chat' + _keyQ, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({question: q, history: _guideChatHistory.slice(0, -1), style: style})
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      loadingEl.remove();
+      if (d.error) {
+        appendGuideChatMsg('assistant', '抱歉：' + d.error);
+      } else {
+        appendGuideChatMsg('assistant', d.answer);
+        _guideChatHistory.push({role: 'assistant', content: d.answer});
+      }
+    })
+    .catch(function(e) {
+      loadingEl.remove();
+      appendGuideChatMsg('assistant', '网络错误：' + e.message);
+    })
+    .finally(function() {
+      _guideChatSending = false;
+      document.getElementById('guideSendBtn').disabled = false;
+    });
+}
+
+function appendGuideChatMsg(role, text, isLoading) {
+  var container = document.getElementById('guideChatMessages');
+  var div = document.createElement('div');
+  div.className = 'guide-chat-msg ' + role + (isLoading ? ' loading' : '');
+  div.textContent = text;
+  container.appendChild(div);
+  // 滚动到底部
+  var body = document.getElementById('guidePanelBody');
+  body.scrollTop = body.scrollHeight;
+  return div;
+}
+
+// ── 语音识别（讲解输入） ──
+var _guideRecognition = null;
+var _guideRecording = false;
+
+function initGuideRecognition() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return false;
+  _guideRecognition = new SR();
+  _guideRecognition.lang = 'zh-CN';
+  _guideRecognition.continuous = false;
+  _guideRecognition.interimResults = true;
+
+  _guideRecognition.onresult = function(event) {
+    var final = '';
+    var interim = '';
+    for (var i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    var input = document.getElementById('guideInput');
+    input.value = final || interim;
+  };
+
+  _guideRecognition.onend = function() {
+    _guideRecording = false;
+    document.getElementById('guideMicBtn').classList.remove('recording');
+    document.getElementById('guideMicBtn').textContent = '🎤';
+    // 如果有识别结果，自动发送
+    var input = document.getElementById('guideInput');
+    if (input.value.trim()) {
+      sendGuideChat();
+    }
+  };
+
+  _guideRecognition.onerror = function(event) {
+    _guideRecording = false;
+    document.getElementById('guideMicBtn').classList.remove('recording');
+    document.getElementById('guideMicBtn').textContent = '🎤';
+    if (event.error !== 'no-speech') {
+      appendGuideChatMsg('user', '（语音识别失败：' + event.error + '）');
+    }
+  };
+  return true;
+}
+
+function toggleGuideMic() {
+  // 检查浏览器支持
+  if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+    alert('当前浏览器不支持语音识别，请使用Chrome浏览器');
+    return;
+  }
+  if (!_guideRecognition) {
+    if (!initGuideRecognition()) {
+      alert('语音识别初始化失败');
+      return;
+    }
+  }
+
+  if (_guideRecording) {
+    _guideRecognition.stop();
+  } else {
+    // 停止TTS避免麦克风收音冲突
+    if (_ttsPlaying) stopTTS();
+    try {
+      _guideRecognition.start();
+      _guideRecording = true;
+      document.getElementById('guideMicBtn').classList.add('recording');
+      document.getElementById('guideMicBtn').textContent = '⏹';
+    } catch (e) {
+      alert('启动录音失败：' + e.message);
+    }
+  }
 }
 
 // ── TTS语音播放（基于浏览器Web Speech API） ──
@@ -484,14 +661,21 @@ function closeGuidePanel() {
   stopTTS();
   document.getElementById('ttsBar').style.display = 'none';
   document.getElementById('styleBar').style.display = 'none';
+  document.getElementById('guideInputBar').style.display = 'none';
+  document.getElementById('guideChatArea').style.display = 'none';
+  // 停止录音
+  if (_guideRecording && _guideRecognition) _guideRecognition.stop();
 }
 
 function showGuideList() {
   var body = document.getElementById('guidePanelBody');
-  // 隐藏TTS栏和风格栏（列表页不需要）
+  // 隐藏TTS栏、风格栏、对话区、输入栏（列表页不需要）
   stopTTS();
   document.getElementById('ttsBar').style.display = 'none';
   document.getElementById('styleBar').style.display = 'none';
+  document.getElementById('guideInputBar').style.display = 'none';
+  document.getElementById('guideChatArea').style.display = 'none';
+  if (_guideRecording && _guideRecognition) _guideRecognition.stop();
   if (!knownSpots.length) {
     body.innerHTML = '<div style="color:#999;padding:20px">暂无可讲解景点</div>';
     return;

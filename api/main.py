@@ -379,6 +379,67 @@ async def guide(spot_name: str, style: str = "vivid"):
     }
 
 
+class GuideChatRequest(BaseModel):
+    question: str
+    history: list[dict] = []  # [{"role":"user","content":"..."},{"role":"assistant","content":"..."}]
+    style: str = "vivid"
+
+
+@app.post("/guide/{spot_name}/chat")
+async def guide_chat(spot_name: str, req: GuideChatRequest):
+    """讲解AI互动对话 — 用户基于讲解内容继续提问
+
+    保留景点上下文（知识+风格），支持多轮对话。
+    """
+    from data.scenic_data import SCENIC_SPOTS
+
+    style_config = GUIDE_STYLES.get(req.style, GUIDE_STYLES["vivid"])
+
+    # 查找景点
+    spot = None
+    for s in SCENIC_SPOTS:
+        if spot_name in s["name"] or s["name"] in spot_name:
+            spot = s
+            break
+    if not spot:
+        return JSONResponse(status_code=404, content={"error": f"未找到景点: {spot_name}"})
+
+    # 拼接景点知识
+    knowledge_parts = []
+    if spot.get("desc"):
+        knowledge_parts.append(spot["desc"])
+    if spot.get("detail"):
+        knowledge_parts.append(spot["detail"])
+    if spot.get("highlights"):
+        knowledge_parts.append(f"主要看点：{spot['highlights']}")
+    if spot.get("dynasty"):
+        knowledge_parts.append(f"建造朝代：{spot['dynasty']}")
+    knowledge = "\n".join(knowledge_parts)
+    if len(knowledge) > 600:
+        knowledge = knowledge[:600] + "..."
+
+    # 构建对话messages
+    system_prompt = (
+        f"{style_config['system']}\n\n"
+        f"你正在为游客讲解【{spot['name']}】。以下是景点知识，请基于此回答游客的追问：\n{knowledge}\n\n"
+        f"注意：回答要口语化、简洁（150字以内），保持讲解员的身份和{style_config['label']}风格。"
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+    # 加入历史对话
+    for msg in req.history[-6:]:  # 最多保留最近3轮（6条）
+        if msg.get("role") in ("user", "assistant") and msg.get("content"):
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": req.question})
+
+    try:
+        response = await llm.chat(messages=messages, temperature=style_config["temp"], max_tokens=300)
+        answer = response.strip()
+    except Exception as e:
+        answer = f"抱歉，回答出错了：{e}"
+
+    return {"spot_name": spot["name"], "answer": answer, "style": req.style}
+
+
 @app.get("/guide")
 async def guide_list():
     """列出可讲解的景点"""
