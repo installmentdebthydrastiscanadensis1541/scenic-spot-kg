@@ -11,7 +11,7 @@ class Settings:
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "empty")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "Qwen2.5-7B-Instruct")
     LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
-    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "512"))
+    LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
     # ── 嵌入模型 ──
     EMBEDDING_MODEL: str = "paraphrase-multilingual-MiniLM-L12-v2"
