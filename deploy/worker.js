@@ -162,25 +162,34 @@ function healthCheckPage(publicUrl) {
   p { color: #666; margin: 0; line-height: 1.6; }
   .tip { margin-top: 16px; font-size: 13px; color: #999; }
   #status { margin-top: 8px; font-size: 14px; color: #1a73e8; }
+  .progress-bar { width: 100%; height: 6px; background: #e0e0e0; border-radius: 3px; margin-top: 12px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #1a73e8; border-radius: 3px; transition: width 0.3s; }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="spinner"></div>
   <h2>小景 · 景点知识助手</h2>
-  <p>实例已开机，正在等待服务就绪...</p>
-  <p id="status">检测中...</p>
-  <p class="tip">服务就绪后将自动跳转，请勿关闭</p>
+  <p>实例已开机，正在加载AI模型...</p>
+  <p id="status">正在检测服务状态...</p>
+  <div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+  <p class="tip">预计需要2-4分钟，服务就绪后将自动跳转，请勿关闭</p>
 </div>
 <script>
 const TARGET = ${JSON.stringify(publicUrl)};
 let attempts = 0;
-const maxAttempts = 60; // 最多检测60次，每次5秒，共5分钟
+const maxAttempts = 80; // 最多检测80次，每次3秒，共4分钟
+const intervalMs = 3000;
 
 async function checkHealth() {
   attempts++;
+  const pct = Math.min(Math.round(attempts / maxAttempts * 100), 95);
+  document.getElementById('progress').style.width = pct + '%';
+  
   if (attempts > maxAttempts) {
     document.getElementById('status').textContent = '等待超时，请刷新页面重试';
+    document.getElementById('progress').style.width = '100%';
+    document.getElementById('progress').style.background = '#f44336';
     return;
   }
   try {
@@ -189,15 +198,18 @@ async function checkHealth() {
       const data = await resp.json();
       if (data.status === 'ok') {
         document.getElementById('status').textContent = '服务已就绪！正在跳转...';
+        document.getElementById('progress').style.width = '100%';
         window.location.href = TARGET;
         return;
       }
     }
-    document.getElementById('status').textContent = '服务启动中... (' + attempts + '/' + maxAttempts + ')';
+    const elapsed = attempts * 3;
+    document.getElementById('status').textContent = 'AI模型加载中... 已等待' + elapsed + '秒';
   } catch (e) {
-    document.getElementById('status').textContent = '等待服务启动... (' + attempts + '/' + maxAttempts + ')';
+    const elapsed = attempts * 3;
+    document.getElementById('status').textContent = '等待服务启动... 已等待' + elapsed + '秒';
   }
-  setTimeout(checkHealth, 5000);
+  setTimeout(checkHealth, intervalMs);
 }
 checkHealth();
 </script>
