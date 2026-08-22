@@ -7,6 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>小景 · 景点知识助手</title>
+<!-- 版本: v2.3 - 讲解互动+语音输入+图片防盗链修复 -->
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; display: flex; }
@@ -284,15 +285,23 @@ function openGuidePanel(spotName) {
 
 // 拉取讲解内容（支持风格参数）
 function fetchGuideContent(spotName, style) {
+  console.log('[Guide] fetchGuideContent:', spotName, style);
   var body = document.getElementById('guidePanelBody');
   var regenBtn = document.getElementById('regenBtn');
   if (regenBtn) regenBtn.classList.add('loading');
   body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
   stopTTS();
 
-  fetch('/guide/' + encodeURIComponent(spotName) + _keyQ + (_keyQ ? '&' : '?') + 'style=' + style)
-    .then(function(r) { return r.json(); })
+  var url = '/guide/' + encodeURIComponent(spotName) + _keyQ + (_keyQ ? '&' : '?') + 'style=' + style;
+  console.log('[Guide] fetch URL:', url);
+  fetch(url)
+    .then(function(r) {
+      console.log('[Guide] response status:', r.status);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
     .then(function(d) {
+      console.log('[Guide] data received:', d.spot_name, d.style);
       if (regenBtn) regenBtn.classList.remove('loading');
       if (d.error) {
         body.innerHTML = '<div style="color:#f44336;padding:20px">' + escHtml(d.error) + '</div>';
@@ -320,6 +329,7 @@ function fetchGuideContent(spotName, style) {
       document.getElementById('guideChatArea').style.display = 'none';
     })
     .catch(function(e) {
+      console.error('[Guide] fetch error:', e);
       if (regenBtn) regenBtn.classList.remove('loading');
       body.innerHTML = '<div style="color:#f44336;padding:20px">加载失败: ' + escHtml(e.message) + '</div>';
     });
