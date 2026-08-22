@@ -137,8 +137,8 @@ class ImageSearchTool(BaseTool):
                 if auth_domain in domain:
                     return f"权威来源({auth_name})"
 
-            # 其他来源只显示域名
-            return f"来源: {domain}"
+            # 其他来源只显示域名（不加"来源:"前缀，外层已加）
+            return domain
         except Exception:
             return ""
 
@@ -181,7 +181,9 @@ class ImageSearchTool(BaseTool):
             title = item.get("fromPageTitle") or item.get("title") or ""
             title = re.sub(r"<[^>]+>", "", title).strip()
 
-            page_url = item.get("fromURL") or item.get("flip_url") or ""
+            # fromURL常为百度加密格式(如ippr_z2C$q...)，不是有效URL，需过滤
+            raw_page_url = item.get("fromURL") or ""
+            page_url = raw_page_url if raw_page_url.startswith(("http://", "https://")) else ""
 
             # 标注来源权威性
             source_tag = self._get_source_tag(page_url) or self._get_source_tag(image_url)
