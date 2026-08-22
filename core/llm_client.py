@@ -30,7 +30,7 @@ class LLMClient:
     """统一的LLM调用客户端"""
 
     # 模型最大上下文长度，需与vLLM启动参数max_model_len一致
-    MAX_MODEL_LEN = 8192
+    MAX_MODEL_LEN = 16384
 
     def __init__(self, mock: bool | None = None):
         self.mock = mock if mock is not None else settings.DEV_MOCK_LLM

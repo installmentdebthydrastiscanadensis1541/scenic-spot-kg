@@ -61,7 +61,7 @@ start_vllm() {
             --host 0.0.0.0 \
             --port $VLLM_PORT \
             --trust-remote-code \
-            --max-model-len 8192 \
+            --max-model-len 16384 \
             --gpu-memory-utilization 0.9 \
             --enforce-eager \
             > /root/vllm.log 2>&1 &
