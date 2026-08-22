@@ -129,6 +129,12 @@
   .img-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   .img-thumb { width: 120px; height: 90px; object-fit: cover; border-radius: 6px; cursor: pointer; border: 1px solid #e0e0e0; transition: transform 0.15s; }
   .img-thumb:hover { transform: scale(1.05); border-color: #1a73e8; }
+  /* 可信度徽章样式 */
+  .credibility-tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; margin-top: 8px; }
+  .credibility-green { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+  .credibility-yellow { background: #fff8e1; color: #f57f17; border: 1px solid #ffe082; }
+  .credibility-red { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+  .credibility-gray { background: #f5f5f5; color: #757575; border: 1px solid #e0e0e0; }
   .img-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 300; justify-content: center; align-items: center; }
   .img-overlay.show { display: flex; }
   .img-overlay img { max-width: 90vw; max-height: 85vh; border-radius: 8px; }
@@ -841,12 +847,22 @@ function showGuideList() {
   var html = '<div style="font-size:15px;font-weight:600;margin-bottom:12px;color:#333">可讲解景点 (' + knownSpots.length + ')</div>';
   for (var i = 0; i < knownSpots.length; i++) {
     var s = knownSpots[i];
-    html += '<div style="padding:8px 0;border-bottom:1px solid #f0f0f0;cursor:pointer" onclick="openGuidePanel(\'' + escHtml(s.name).replace(/'/g, "\\'") + '\')">'
+    // 用data-index存储索引，通过事件委托处理点击，避免onclick转义问题
+    html += '<div class="guide-spot-item" data-index="' + i + '" style="padding:8px 0;border-bottom:1px solid #f0f0f0;cursor:pointer">'
       + '<span style="font-size:14px;color:#1a73e8">' + escHtml(s.name) + '</span>'
       + (s.city ? '<span style="font-size:12px;color:#999;margin-left:8px">' + escHtml(s.city) + '</span>' : '')
       + '</div>';
   }
   body.innerHTML = html;
+  // 事件委托：点击景点项时打开讲解面板
+  body.querySelectorAll('.guide-spot-item').forEach(function(item) {
+    item.addEventListener('click', function() {
+      var idx = parseInt(this.getAttribute('data-index'));
+      if (!isNaN(idx) && knownSpots[idx]) {
+        openGuidePanel(knownSpots[idx].name);
+      }
+    });
+  });
 }
 
 // AutoDL状态轮询（仅在AutoDL模式下显示）
@@ -1013,6 +1029,40 @@ function renderImagesInBubble(bubble, text) {
   bubble.appendChild(gallery);
 }
 
+// 可信度徽章渲染
+function renderCredibilityTag(bubble, text) {
+  var tagMatch = text.match(/🟢\s*\[官方确认\][^\n]*/) ||
+                 text.match(/🟡\s*\[多方参考\][^\n]*/) ||
+                 text.match(/🔴\s*\[存在争议\][^\n]*/) ||
+                 text.match(/⚪\s*\[暂无可靠信息\][^\n]*/);
+  if (!tagMatch) return;
+
+  var tagText = tagMatch[0];
+  var cssClass = 'credibility-gray';
+  if (tagText.indexOf('官方确认') >= 0) cssClass = 'credibility-green';
+  else if (tagText.indexOf('多方参考') >= 0) cssClass = 'credibility-yellow';
+  else if (tagText.indexOf('存在争议') >= 0) cssClass = 'credibility-red';
+
+  // 从气泡文本中移除标签行
+  var cleanText = text.replace(/🟢\s*\[官方确认\][^\n]*/, '')
+                       .replace(/🟡\s*\[多方参考\][^\n]*/, '')
+                       .replace(/🔴\s*\[存在争议\][^\n]*/, '')
+                       .replace(/⚪\s*\[暂无可靠信息\][^\n]*/, '')
+                       .replace(/\n{2,}$/, '\n').trim();
+  bubble.textContent = cleanText;
+
+  // 添加徽章
+  var badge = document.createElement('span');
+  badge.className = 'credibility-tag ' + cssClass;
+  badge.textContent = tagText.replace(/^\S+\s*/, '');
+  bubble.appendChild(badge);
+
+  // 如果有图片链接，重新渲染图片
+  if (/图片链接:/.test(cleanText)) {
+    renderImagesInBubble(bubble, cleanText);
+  }
+}
+
 // 消息
 function addMsg(role, text, scroll) {
   if (scroll === undefined) scroll = true;
@@ -1031,6 +1081,10 @@ function addMsg(role, text, scroll) {
   // 为assistant历史消息渲染图片
   if (role === 'assistant' && text && /图片链接:/.test(text)) {
     renderImagesInBubble(bubble, text);
+  }
+  // 为assistant消息渲染可信度徽章
+  if (role === 'assistant' && text) {
+    renderCredibilityTag(bubble, text);
   }
   // 为assistant消息检测景点名，添加"听讲解"按钮
   if (role === 'assistant' && text) {
@@ -1162,6 +1216,10 @@ async function send() {
     // 流式回答完成后，渲染图片
     if (fullText && /图片链接:/.test(fullText)) {
       renderImagesInBubble(bubble, fullText);
+    }
+    // 流式回答完成后，渲染可信度徽章
+    if (fullText) {
+      renderCredibilityTag(bubble, fullText);
     }
     // 流式回答完成后，检测景点并添加讲解按钮
     if (fullText) {
