@@ -814,6 +814,7 @@ function escHtml(s) { const d=document.createElement('div'); d.textContent=s; re
 function openImgOverlay(url) {
   var overlay = document.getElementById('imgOverlay');
   var img = document.getElementById('imgOverlayImg');
+  img.referrerPolicy = 'no-referrer';
   img.src = url;
   overlay.classList.add('show');
 }
@@ -846,6 +847,8 @@ function renderImagesInBubble(bubble, text) {
     img.src = urls[i];
     img.alt = '景点图片';
     img.loading = 'lazy';
+    // 百度图片等有防盗链，不发送Referer可绕过
+    img.referrerPolicy = 'no-referrer';
     img.onerror = function() { this.style.display = 'none'; };
     img.onclick = (function(u) { return function() { openImgOverlay(u); }; })(urls[i]);
     gallery.appendChild(img);
