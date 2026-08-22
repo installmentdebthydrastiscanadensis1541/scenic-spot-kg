@@ -10,6 +10,8 @@
 # - 进程重复检测（已在运行则跳过）
 
 # ── 配置 ──
+# 确保miniconda的python在PATH中（SSH非交互式shell不加载.bashrc）
+export PATH="/root/miniconda3/bin:$PATH"
 VLLM_PORT=8000
 FASTAPI_PORT=6006          # AutoDL默认映射到公网的端口
 MODEL_PATH=/root/autodl-tmp/Qwen2.5-7B-Instruct
@@ -61,6 +63,7 @@ start_vllm() {
             --trust-remote-code \
             --max-model-len 8192 \
             --gpu-memory-utilization 0.9 \
+            --enforce-eager \
             > /root/vllm.log 2>&1 &
         local vllm_pid=$!
         echo "[$(date '+%H:%M:%S')] [vLLM] PID=$vllm_pid，等待就绪..."

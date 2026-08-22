@@ -4,8 +4,9 @@
 """
 import os
 import pathlib
+from urllib.parse import urlparse
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -446,6 +447,53 @@ async def guide_list():
     from data.scenic_data import SCENIC_SPOTS
     spots = [{"name": s["name"], "city": s["city"], "category": s["category"]} for s in SCENIC_SPOTS]
     return {"spots": spots, "total": len(spots)}
+
+
+@app.get("/api/image_proxy")
+async def image_proxy(url: str):
+    """图片代理 — 后端获取百度图片再返回给浏览器，绕过防盗链
+
+    浏览器直接加载百度图片URL会被防盗链拦截（即使设no-referrer），
+    通过后端代理带正确Referer获取，彻底解决问题。
+    """
+    # 安全检查：只允许代理已知图片CDN域名，防止SSRF
+    ALLOWED_IMG_DOMAINS = {
+        "image.baidu.com", "img0.baidu.com", "img1.baidu.com",
+        "img2.baidu.com", "img3.baidu.com", "img4.baidu.com",
+        "img5.baidu.com", "bhipics.cheaperonline.com",
+    }
+    try:
+        parsed = urlparse(url)
+        if parsed.hostname not in ALLOWED_IMG_DOMAINS:
+            return JSONResponse(status_code=403, content={"error": "该图片域名不允许代理"})
+        if not url.startswith("https://"):
+            return JSONResponse(status_code=403, content={"error": "仅支持HTTPS图片"})
+    except Exception:
+        return JSONResponse(status_code=400, content={"error": "无效的URL"})
+
+    import httpx
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://image.baidu.com/",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200 and resp.content:
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                # 只允许图片类型的响应
+                if not content_type.startswith("image/"):
+                    return JSONResponse(status_code=403, content={"error": "非图片内容"})
+                return Response(
+                    content=resp.content,
+                    media_type=content_type,
+                    headers={"Cache-Control": "public, max-age=86400"},  # 浏览器缓存1天
+                )
+            return JSONResponse(status_code=502, content={"error": f"上游返回 {resp.status_code}"})
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"error": f"代理获取失败: {e}"})
 
 
 @app.get("/health")

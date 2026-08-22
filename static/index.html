@@ -837,8 +837,8 @@ function escHtml(s) { const d=document.createElement('div'); d.textContent=s; re
 function openImgOverlay(url) {
   var overlay = document.getElementById('imgOverlay');
   var img = document.getElementById('imgOverlayImg');
-  img.referrerPolicy = 'no-referrer';
-  img.src = url;
+  // 通过后端代理加载，绕过百度图片防盗链
+  img.src = '/api/image_proxy?url=' + encodeURIComponent(url) + _keyA;
   overlay.classList.add('show');
 }
 function closeImgOverlay() {
@@ -867,11 +867,10 @@ function renderImagesInBubble(bubble, text) {
   for (var i = 0; i < Math.min(urls.length, 5); i++) {
     var img = document.createElement('img');
     img.className = 'img-thumb';
-    img.src = urls[i];
+    // 通过后端代理加载，绕过百度图片防盗链（比referrerPolicy更可靠）
+    img.src = '/api/image_proxy?url=' + encodeURIComponent(urls[i]) + _keyA;
     img.alt = '景点图片';
     img.loading = 'lazy';
-    // 百度图片等有防盗链，不发送Referer可绕过
-    img.referrerPolicy = 'no-referrer';
     img.onerror = function() { this.style.display = 'none'; };
     img.onclick = (function(u) { return function() { openImgOverlay(u); }; })(urls[i]);
     gallery.appendChild(img);

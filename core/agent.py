@@ -387,9 +387,23 @@ class ReActAgent:
         text = re.sub(r"\n{2,}", "\n", text)
         # 图片URL保护：如果调用了image_search但LLM没保留"图片链接:"行，追加URL
         # 防止LLM将URL改写为占位符（如"!黄鹤楼夜景"）导致前端无法渲染图片
-        if self._image_urls and "图片链接:" not in text:
-            img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
-            text = text.rstrip() + "\n" + "\n".join(img_lines)
+        if self._image_urls:
+            if "图片链接:" not in text:
+                # 情况1：LLM完全删除了图片链接行 → 追加真实URL
+                img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
+                text = text.rstrip() + "\n" + "\n".join(img_lines)
+            else:
+                # 情况2：LLM输出了"图片链接:"但URL可能是编造的
+                # 提取text中所有图片链接URL，检查是否与工具返回的真实URL匹配
+                text_img_urls = re.findall(r"图片链接:\s*(https?://[^\s\n]+)", text)
+                real_url_set = set(self._image_urls)
+                # 如果text中的URL都不在真实URL列表中，说明全是编造的
+                has_real_url = any(u in real_url_set for u in text_img_urls)
+                if not has_real_url:
+                    # 删除所有编造的图片链接行，替换为真实URL
+                    text = re.sub(r'^[ \t]*图片链接:\s*https?://[^\s\n]+[ \t]*$', '', text, flags=re.MULTILINE)
+                    img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
+                    text = text.rstrip() + "\n" + "\n".join(img_lines)
         return text.strip()
 
     def _deduplicate_loops(self, text: str) -> str:
