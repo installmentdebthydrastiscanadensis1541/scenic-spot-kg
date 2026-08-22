@@ -267,8 +267,11 @@ function openGuidePanel(spotName) {
   _currentGuideSpot = spotName;
   var panel = document.getElementById('guidePanel');
   var overlay = document.getElementById('guideOverlay');
-  var body = document.getElementById('guidePanelBody');
-  body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+  // 只更新guideContent，不覆盖整个body（保留guideChatArea等子元素结构）
+  var contentDiv = document.getElementById('guideContent');
+  if (contentDiv) {
+    contentDiv.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+  }
   panel.classList.add('open');
   overlay.classList.add('show');
   // 重置TTS状态
@@ -289,7 +292,12 @@ function fetchGuideContent(spotName, style) {
   var body = document.getElementById('guidePanelBody');
   var regenBtn = document.getElementById('regenBtn');
   if (regenBtn) regenBtn.classList.add('loading');
-  body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+
+  // 只更新guideContent，不覆盖整个body（避免删除guideChatArea等子元素）
+  var contentDiv = document.getElementById('guideContent');
+  if (contentDiv) {
+    contentDiv.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+  }
   stopTTS();
 
   var url = '/guide/' + encodeURIComponent(spotName) + _keyQ + (_keyQ ? '&' : '?') + 'style=' + style;
@@ -304,12 +312,15 @@ function fetchGuideContent(spotName, style) {
       console.log('[Guide] data received:', d.spot_name, d.style);
       if (regenBtn) regenBtn.classList.remove('loading');
       if (d.error) {
-        body.innerHTML = '<div style="color:#f44336;padding:20px">' + escHtml(d.error) + '</div>';
+        if (contentDiv) contentDiv.innerHTML = '<div style="color:#f44336;padding:20px">' + escHtml(d.error) + '</div>';
         return;
       }
-      body.innerHTML = '<div class="guide-spot-name">' + escHtml(d.spot_name) + '</div>'
-        + (d.city ? '<div class="guide-spot-city">' + escHtml(d.city) + '</div>' : '')
-        + '<div class="guide-content">' + escHtml(d.guide) + '</div>';
+      // 只更新guideContent，保留guideChatArea等兄弟元素
+      if (contentDiv) {
+        contentDiv.innerHTML = '<div class="guide-spot-name">' + escHtml(d.spot_name) + '</div>'
+          + (d.city ? '<div class="guide-spot-city">' + escHtml(d.city) + '</div>' : '')
+          + '<div class="guide-content">' + escHtml(d.guide) + '</div>';
+      }
       // 显示TTS控件和风格选择栏
       if (d.guide && 'speechSynthesis' in window) {
         document.getElementById('ttsBar').style.display = 'flex';
@@ -323,15 +334,17 @@ function fetchGuideContent(spotName, style) {
       if (d.style) document.getElementById('styleSelect').value = d.style;
       // 显示互动输入栏（讲解加载成功后才能提问）
       document.getElementById('guideInputBar').style.display = 'flex';
-      // 清空旧的对话历史
+      // 清空旧的对话历史（用null检查避免子元素被覆盖后报错）
       _guideChatHistory = [];
-      document.getElementById('guideChatMessages').innerHTML = '';
-      document.getElementById('guideChatArea').style.display = 'none';
+      var chatMsgs = document.getElementById('guideChatMessages');
+      if (chatMsgs) chatMsgs.innerHTML = '';
+      var chatArea = document.getElementById('guideChatArea');
+      if (chatArea) chatArea.style.display = 'none';
     })
     .catch(function(e) {
       console.error('[Guide] fetch error:', e);
       if (regenBtn) regenBtn.classList.remove('loading');
-      body.innerHTML = '<div style="color:#f44336;padding:20px">加载失败: ' + escHtml(e.message) + '</div>';
+      if (contentDiv) contentDiv.innerHTML = '<div style="color:#f44336;padding:20px">加载失败: ' + escHtml(e.message) + '</div>';
     });
 }
 
