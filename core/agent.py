@@ -100,6 +100,7 @@ class ReActAgent:
         self.tools = tools
         self.max_iterations = settings.MAX_ITERATIONS
         self.memory = ConversationMemory(max_rounds=10)
+        self._image_urls: list[str] = []  # image_search返回的图片URL，用于最终回答保护
 
     def _is_simple_question(self, question: str) -> bool:
         """判断是否为简单问候/闲聊，无需工具调用。
@@ -166,6 +167,8 @@ class ReActAgent:
 
     async def run(self, question: str, use_memory: bool = True) -> AgentState:
         """执行Agent推理循环"""
+        # 清空上一轮的图片URL缓存
+        self._image_urls = []
         # 解析追问上下文
         resolved_question = self._resolve_context(question) if use_memory else question
         state = AgentState(question=resolved_question)
@@ -256,6 +259,8 @@ class ReActAgent:
 
     async def run_stream(self, question: str, use_memory: bool = True) -> AsyncGenerator[str, None]:
         """流式输出：实时推送思考进度，再输出最终答案"""
+        # 清空上一轮的图片URL缓存
+        self._image_urls = []
         resolved_question = self._resolve_context(question) if use_memory else question
         state = AgentState(question=resolved_question)
 
@@ -366,12 +371,25 @@ class ReActAgent:
         text = re.sub(r"Observation:.*", "", text)
         # 去掉LLM可能输出的提示标记
         text = re.sub(r"【.*?】", "", text)
-        # 去掉markdown超链接残留
-        text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+        # 去掉markdown超链接残留（[text](url) → text），但不处理图片语法 ![]
+        text = re.sub(r"(?<!!)\[([^\]]+)\]\([^)]+\)", r"\1", text)
+        # 删除LLM输出的markdown图片语法行（如 ![](url)、![alt](url)）
+        # LLM可能用反引号包裹URL导致格式错误，或编造假URL（如example.com）
+        # 真实图片URL由image_search工具返回的self._image_urls保证，会在末尾统一追加
+        text = re.sub(r"^[ \t]*!\[.*$", "", text, flags=re.MULTILINE)
+        # 清理删除图片语法后残留的孤立反引号行
+        text = re.sub(r"^[ \t]*`+[ \t]*$", "", text, flags=re.MULTILINE)
+        # 去掉LLM编造的无URL图片占位符（如"!黄鹤楼夜景"，不以![开头的情况）
+        text = re.sub(r"^[ \t]*![^\[\(][^\n]*$", "", text, flags=re.MULTILINE)
         # 检测并清理循环重复内容（如路线中A→B→C→A→B→C模式）
         text = self._deduplicate_loops(text)
         # 去掉重复空行
         text = re.sub(r"\n{2,}", "\n", text)
+        # 图片URL保护：如果调用了image_search但LLM没保留"图片链接:"行，追加URL
+        # 防止LLM将URL改写为占位符（如"!黄鹤楼夜景"）导致前端无法渲染图片
+        if self._image_urls and "图片链接:" not in text:
+            img_lines = [f"图片链接: {url}" for url in self._image_urls[:5]]
+            text = text.rstrip() + "\n" + "\n".join(img_lines)
         return text.strip()
 
     def _deduplicate_loops(self, text: str) -> str:
@@ -459,7 +477,12 @@ class ReActAgent:
         tool = self.tools[tool_name]
         try:
             result = await asyncio.wait_for(tool.run(tool_input), timeout=30)
-            return str(result)
+            result_str = str(result)
+            # 图片URL保护：image_search返回的URL缓存起来，供最终回答使用
+            if tool_name == "image_search":
+                urls = re.findall(r"图片链接:\s*(https?://[^\s\n]+)", result_str)
+                self._image_urls.extend(urls[:5])
+            return result_str
         except asyncio.TimeoutError:
             return f"工具 '{tool_name}' 执行超时（30秒），请简化问题后重试。"
         except Exception as e:

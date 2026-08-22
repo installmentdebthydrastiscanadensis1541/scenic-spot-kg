@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>小景 · 景点知识助手</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -75,6 +78,24 @@
   .guide-panel-footer .guide-list-btn:hover { border-color: #1a73e8; color: #1a73e8; }
   .guide-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.2); z-index: 199; }
   .guide-overlay.show { display: block; }
+  /* TTS语音播放控件 */
+  .tts-bar { padding: 10px 16px; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tts-play-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: #1a73e8; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+  .tts-play-btn:hover { background: #1557b0; }
+  .tts-play-btn.playing { background: #ef5350; }
+  .tts-play-btn.playing:hover { background: #d32f2f; }
+  .tts-voice-select { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; cursor: pointer; background: white; color: #333; }
+  .tts-progress-wrap { flex: 1; min-width: 100px; display: flex; align-items: center; gap: 6px; }
+  .tts-progress { flex: 1; height: 4px; background: #e0e0e0; border-radius: 2px; cursor: pointer; position: relative; }
+  .tts-progress-fill { height: 100%; background: #1a73e8; border-radius: 2px; width: 0%; transition: width 0.2s; }
+  .tts-time { font-size: 11px; color: #999; white-space: nowrap; }
+  /* 讲解风格选择栏 */
+  .style-bar { padding: 8px 16px; border-bottom: 1px solid #e0e0e0; background: #fff; display: flex; align-items: center; gap: 8px; }
+  .style-bar label { font-size: 12px; color: #666; white-space: nowrap; }
+  .style-select { padding: 4px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; cursor: pointer; background: white; color: #333; }
+  .regen-btn { padding: 4px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 12px; cursor: pointer; background: #f5f5f5; color: #555; display: flex; align-items: center; gap: 4px; }
+  .regen-btn:hover { border-color: #1a73e8; color: #1a73e8; }
+  .regen-btn.loading { opacity: 0.6; pointer-events: none; }
   @media (max-width: 768px) {
     .guide-panel { width: 100%; right: -100%; }
   }
@@ -108,12 +129,6 @@
       <h2>你好，我是小景</h2>
       <p>基于大模型+知识图谱的景点智能助手，问我任何景点问题吧</p>
       <div class="suggestions">
-        <button onclick="ask('广州塔有多高？')">广州塔有多高？</button>
-        <button onclick="ask('推荐一条西安一日游路线')">推荐一条西安一日游路线</button>
-        <button onclick="ask('黄鹤楼在哪个城市？')">黄鹤楼在哪个城市？</button>
-        <button onclick="ask('鼓浪屿怎么玩？')">鼓浪屿怎么玩？</button>
-        <button onclick="ask('哈尔滨冰雪大世界什么时候开放？')">哈尔滨冰雪大世界什么时候开放？</button>
-        <button onclick="ask('从凤凰新村到白云山怎么走')">从凤凰新村到白云山怎么走</button>
         <button onclick="showGuideList();document.getElementById('guidePanel').classList.add('open');document.getElementById('guideOverlay').classList.add('show')">景点讲解</button>
       </div>
     </div>
@@ -135,6 +150,30 @@
   <div class="guide-panel-header">
     <h3>景点讲解</h3>
     <button class="guide-panel-close" onclick="closeGuidePanel()">&times;</button>
+  </div>
+  <div class="tts-bar" id="ttsBar" style="display:none">
+    <button class="tts-play-btn" id="ttsPlayBtn" onclick="toggleTTS()">▶</button>
+    <select class="tts-voice-select" id="ttsVoiceSelect" onchange="changeTTSVoice()">
+      <option value="female">女声</option>
+      <option value="male">男声</option>
+    </select>
+    <div class="tts-progress-wrap">
+      <div class="tts-progress" id="ttsProgress" onclick="seekTTS(event)">
+        <div class="tts-progress-fill" id="ttsProgressFill"></div>
+      </div>
+      <span class="tts-time" id="ttsTime">0:00</span>
+    </div>
+  </div>
+  <div class="style-bar" id="styleBar" style="display:none">
+    <label>风格：</label>
+    <select class="style-select" id="styleSelect" onchange="regenerateGuide()">
+      <option value="vivid">活泼生动</option>
+      <option value="formal">专业正式</option>
+      <option value="humor">幽默风趣</option>
+      <option value="poetic">诗意文雅</option>
+      <option value="simple">简洁明了</option>
+    </select>
+    <button class="regen-btn" id="regenBtn" onclick="regenerateGuide()">↻ 换一种</button>
   </div>
   <div class="guide-panel-body" id="guidePanelBody">
     <div id="guideContent"></div>
@@ -195,17 +234,37 @@ function detectSpots(text) {
 }
 
 // 打开讲解面板
+var _currentGuideSpot = '';  // 当前讲解的景点名，用于重新生成
 function openGuidePanel(spotName) {
+  _currentGuideSpot = spotName;
   var panel = document.getElementById('guidePanel');
   var overlay = document.getElementById('guideOverlay');
   var body = document.getElementById('guidePanelBody');
   body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
   panel.classList.add('open');
   overlay.classList.add('show');
+  // 重置TTS状态
+  stopTTS();
+  document.getElementById('ttsBar').style.display = 'none';
+  document.getElementById('styleBar').style.display = 'none';
+  // 重置风格选择为默认
+  document.getElementById('styleSelect').value = 'vivid';
 
-  fetch('/guide/' + encodeURIComponent(spotName) + _keyQ)
+  fetchGuideContent(spotName, 'vivid');
+}
+
+// 拉取讲解内容（支持风格参数）
+function fetchGuideContent(spotName, style) {
+  var body = document.getElementById('guidePanelBody');
+  var regenBtn = document.getElementById('regenBtn');
+  if (regenBtn) regenBtn.classList.add('loading');
+  body.innerHTML = '<div style="text-align:center;color:#999;padding:40px">加载中...</div>';
+  stopTTS();
+
+  fetch('/guide/' + encodeURIComponent(spotName) + _keyQ + (_keyQ ? '&' : '?') + 'style=' + style)
     .then(function(r) { return r.json(); })
     .then(function(d) {
+      if (regenBtn) regenBtn.classList.remove('loading');
       if (d.error) {
         body.innerHTML = '<div style="color:#f44336;padding:20px">' + escHtml(d.error) + '</div>';
         return;
@@ -213,19 +272,226 @@ function openGuidePanel(spotName) {
       body.innerHTML = '<div class="guide-spot-name">' + escHtml(d.spot_name) + '</div>'
         + (d.city ? '<div class="guide-spot-city">' + escHtml(d.city) + '</div>' : '')
         + '<div class="guide-content">' + escHtml(d.guide) + '</div>';
+      // 显示TTS控件和风格选择栏
+      if (d.guide && 'speechSynthesis' in window) {
+        document.getElementById('ttsBar').style.display = 'flex';
+        _ttsText = d.guide;
+        _ttsChunks = splitTTSChunks(d.guide);
+        _ttsCharIndex = 0;
+        updateTTSProgress();
+      }
+      document.getElementById('styleBar').style.display = 'flex';
+      // 同步风格下拉框（如果后端返回了实际使用的style）
+      if (d.style) document.getElementById('styleSelect').value = d.style;
     })
     .catch(function(e) {
+      if (regenBtn) regenBtn.classList.remove('loading');
       body.innerHTML = '<div style="color:#f44336;padding:20px">加载失败: ' + escHtml(e.message) + '</div>';
     });
+}
+
+// 重新生成讲解（用当前选中的风格）
+function regenerateGuide() {
+  if (!_currentGuideSpot) return;
+  var style = document.getElementById('styleSelect').value;
+  fetchGuideContent(_currentGuideSpot, style);
+}
+
+// ── TTS语音播放（基于浏览器Web Speech API） ──
+var _ttsText = '';          // 当前讲解全文
+var _ttsChunks = [];        // 分句后的文本块（SpeechSynthesis对长文本不稳定，需分块）
+var _ttsCharIndex = 0;      // 当前播放到的字符位置
+var _ttsPlaying = false;    // 是否正在播放
+var _ttsVoices = [];        // 可用语音列表
+var _ttsFemaleVoice = null; // 女声
+var _ttsMaleVoice = null;   // 男声
+
+// 加载语音列表（异步，浏览器可能延迟返回）
+function loadTTSVoices() {
+  if (!('speechSynthesis' in window)) return;
+  _ttsVoices = speechSynthesis.getVoices();
+  // 优先找中文女声/男声
+  for (var i = 0; i < _ttsVoices.length; i++) {
+    var v = _ttsVoices[i];
+    if (v.lang.indexOf('zh') === 0 || v.lang.indexOf('cmn') === 0) {
+      var name = v.name.toLowerCase();
+      if (!_ttsFemaleVoice && (name.indexOf('female') >= 0 || name.indexOf('女') >= 0 || name.indexOf('xia') >= 0 || name.indexOf('ting') >= 0)) {
+        _ttsFemaleVoice = v;
+      }
+      if (!_ttsMaleVoice && (name.indexOf('male') >= 0 || name.indexOf('男') >= 0 || name.indexOf('yun') >= 0 || name.indexOf('kang') >= 0)) {
+        _ttsMaleVoice = v;
+      }
+    }
+  }
+  // 如果没找到明确标注的男女声，用前两个中文语音
+  var zhVoices = _ttsVoices.filter(function(v) { return v.lang.indexOf('zh') === 0; });
+  if (!_ttsFemaleVoice && zhVoices.length > 0) _ttsFemaleVoice = zhVoices[0];
+  if (!_ttsMaleVoice && zhVoices.length > 1) _ttsMaleVoice = zhVoices[1];
+}
+if ('speechSynthesis' in window) {
+  loadTTSVoices();
+  speechSynthesis.onvoiceschanged = loadTTSVoices;
+}
+
+// 分句（按句号、问号、感叹号、换行分割，每块不超过200字）
+function splitTTSChunks(text) {
+  var chunks = [];
+  var sentences = text.split(/([。！？\n]+)/);
+  var current = '';
+  for (var i = 0; i < sentences.length; i++) {
+    current += sentences[i];
+    if (/[。！？\n]/.test(sentences[i]) || current.length >= 200) {
+      if (current.trim()) chunks.push(current.trim());
+      current = '';
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
+
+// 播放/暂停切换
+function toggleTTS() {
+  if (!_ttsText) return;
+  if (_ttsPlaying) {
+    speechSynthesis.pause();
+    _ttsPlaying = false;
+    document.getElementById('ttsPlayBtn').textContent = '▶';
+    document.getElementById('ttsPlayBtn').classList.remove('playing');
+  } else {
+    if (speechSynthesis.paused) {
+      // 恢复暂停
+      speechSynthesis.resume();
+    } else if (speechSynthesis.speaking) {
+      // 正在说话但状态异常，重新开始
+      speechSynthesis.cancel();
+      _ttsCharIndex = 0;
+      speakNextChunk();
+    } else {
+      // 全新开始
+      _ttsCharIndex = 0;
+      speakNextChunk();
+    }
+    _ttsPlaying = true;
+    document.getElementById('ttsPlayBtn').textContent = '⏸';
+    document.getElementById('ttsPlayBtn').classList.add('playing');
+  }
+}
+
+// 播放下一个文本块
+function speakNextChunk() {
+  if (_ttsCharIndex >= _ttsChunks.length) {
+    // 播放完毕
+    _ttsPlaying = false;
+    _ttsCharIndex = 0;
+    document.getElementById('ttsPlayBtn').textContent = '▶';
+    document.getElementById('ttsPlayBtn').classList.remove('playing');
+    updateTTSProgress();
+    return;
+  }
+
+  var chunk = _ttsChunks[_ttsCharIndex];
+  var utter = new SpeechSynthesisUtterance(chunk);
+  utter.lang = 'zh-CN';
+  utter.rate = 1.0;
+
+  // 选择语音
+  var voiceType = document.getElementById('ttsVoiceSelect').value;
+  var voice = (voiceType === 'male' && _ttsMaleVoice) ? _ttsMaleVoice : _ttsFemaleVoice;
+  if (voice) utter.voice = voice;
+
+  utter.onend = function() {
+    _ttsCharIndex++;
+    updateTTSProgress();
+    if (_ttsPlaying) speakNextChunk();
+  };
+  utter.onerror = function() {
+    _ttsCharIndex++;
+    if (_ttsPlaying) speakNextChunk();
+  };
+
+  speechSynthesis.speak(utter);
+  updateTTSProgress();
+}
+
+// 停止播放
+function stopTTS() {
+  if ('speechSynthesis' in window) {
+    speechSynthesis.cancel();
+  }
+  _ttsPlaying = false;
+  _ttsCharIndex = 0;
+  var btn = document.getElementById('ttsPlayBtn');
+  if (btn) {
+    btn.textContent = '▶';
+    btn.classList.remove('playing');
+  }
+  updateTTSProgress();
+}
+
+// 更新进度条
+function updateTTSProgress() {
+  var fill = document.getElementById('ttsProgressFill');
+  var timeEl = document.getElementById('ttsTime');
+  if (!fill || !timeEl) return;
+  var total = _ttsChunks.length || 1;
+  var pct = (_ttsCharIndex / total) * 100;
+  fill.style.width = pct + '%';
+  // 估算时间（按平均每字0.15秒）
+  var playedChars = 0;
+  for (var i = 0; i < _ttsCharIndex && i < _ttsChunks.length; i++) {
+    playedChars += _ttsChunks[i].length;
+  }
+  var totalChars = _ttsText.length || 1;
+  var playedSec = Math.round((playedChars / totalChars) * (totalChars * 0.15));
+  var totalSec = Math.round(totalChars * 0.15);
+  timeEl.textContent = formatTime(playedSec) + ' / ' + formatTime(totalSec);
+}
+
+function formatTime(sec) {
+  var m = Math.floor(sec / 60);
+  var s = sec % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// 进度条点击跳转
+function seekTTS(event) {
+  if (!_ttsChunks.length) return;
+  var bar = document.getElementById('ttsProgress');
+  var rect = bar.getBoundingClientRect();
+  var pct = (event.clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  _ttsCharIndex = Math.floor(pct * _ttsChunks.length);
+  if (_ttsPlaying) {
+    speechSynthesis.cancel();
+    speakNextChunk();
+  } else {
+    updateTTSProgress();
+  }
+}
+
+// 切换男女声
+function changeTTSVoice() {
+  // 如果正在播放，重新开始当前句
+  if (_ttsPlaying && speechSynthesis.speaking) {
+    speechSynthesis.cancel();
+    speakNextChunk();
+  }
 }
 
 function closeGuidePanel() {
   document.getElementById('guidePanel').classList.remove('open');
   document.getElementById('guideOverlay').classList.remove('show');
+  stopTTS();
+  document.getElementById('ttsBar').style.display = 'none';
+  document.getElementById('styleBar').style.display = 'none';
 }
 
 function showGuideList() {
   var body = document.getElementById('guidePanelBody');
+  // 隐藏TTS栏和风格栏（列表页不需要）
+  stopTTS();
+  document.getElementById('ttsBar').style.display = 'none';
+  document.getElementById('styleBar').style.display = 'none';
   if (!knownSpots.length) {
     body.innerHTML = '<div style="color:#999;padding:20px">暂无可讲解景点</div>';
     return;
@@ -354,7 +620,7 @@ function createWelcome() {
   const div = document.createElement('div');
   div.className = 'welcome';
   div.id = 'welcomeArea';
-  div.innerHTML = '<h2>你好，我是小景</h2><p>基于大模型+知识图谱的景点智能助手</p>';
+  div.innerHTML = '<h2>你好，我是小景</h2><p>基于大模型+知识图谱的景点智能助手</p><div class="suggestions"><button onclick="showGuideList();document.getElementById(\'guidePanel\').classList.add(\'open\');document.getElementById(\'guideOverlay\').classList.add(\'show\')">景点讲解</button></div>';
   return div;
 }
 
@@ -575,16 +841,7 @@ async function send() {
         }
       }
     }
-    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'user', content: q })
-    });
-    fetch('/api/conversations/' + currentConvId + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'assistant', content: fullText })
-    });
+    // 消息保存已由后端/chat/stream接口统一处理（保证user先于assistant入库，避免顺序错乱）
   } catch (e) {
     bubble.classList.remove('typing');
     if (e.name === 'AbortError') {
@@ -601,6 +858,10 @@ async function send() {
 
 // 初始化
 loadConversations();
+// 页面关闭时停止语音播放
+window.addEventListener('beforeunload', function() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+});
 </script>
 </body>
 </html>

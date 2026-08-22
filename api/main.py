@@ -21,7 +21,7 @@ from tools.web_fetch import WebFetchTool
 from tools.map_tool import MapTool
 from tools.image_search import ImageSearchTool
 from config.settings import settings
-from config.prompts import TOUR_GUIDE
+from config.prompts import TOUR_GUIDE, GUIDE_STYLES
 
 
 app = FastAPI(
@@ -237,10 +237,17 @@ async def chat_stream(req: QueryRequest):
     original_memory = agent.memory
     session_memory = get_or_create_memory(req.conversation_id)
 
+    # 后端统一保存user消息（保证消息顺序：user先于assistant）
+    # 避免前端并行fetch导致rowid颠倒（assistant先入库）
+    if req.conversation_id:
+        append_message(req.conversation_id, "user", req.question)
+
     async def generate():
         agent.memory = session_memory
+        full_answer = []
         try:
             async for char in agent.run_stream(req.question, use_memory=True):
+                full_answer.append(char)
                 yield char
         except Exception as e:
             import traceback
@@ -248,6 +255,10 @@ async def chat_stream(req: QueryRequest):
             yield f"抱歉，处理时出错：{e}"
         finally:
             agent.memory = original_memory
+            # 流式结束后保存assistant消息（放在finally中，确保中断时也保存部分回答）
+            # 顺序由后端代码执行顺序保证：user消息在generate()之前保存，一定在前
+            if req.conversation_id and full_answer:
+                append_message(req.conversation_id, "assistant", "".join(full_answer))
 
     return StreamingResponse(
         generate(),
@@ -304,12 +315,16 @@ async def api_rename_conversation(conv_id: str, req: RenameRequest):
 
 
 @app.get("/guide/{spot_name}")
-async def guide(spot_name: str):
+async def guide(spot_name: str, style: str = "vivid"):
     """讲解AI — 为指定景点生成讲解词
 
     基于知识库检索景点信息，再用TOUR_GUIDE提示词生成生动讲解。
+    支持style参数切换讲解风格：vivid(活泼)/formal(正式)/humor(幽默)/poetic(诗意)/simple(简洁)
     """
     from data.scenic_data import SCENIC_SPOTS
+
+    # 校验风格参数
+    style_config = GUIDE_STYLES.get(style, GUIDE_STYLES["vivid"])
 
     # 查找景点
     spot = None
@@ -339,15 +354,15 @@ async def guide(spot_name: str):
     if len(knowledge) > 600:
         knowledge = knowledge[:600] + "..."
 
-    # 调用LLM生成讲解词
-    prompt = TOUR_GUIDE.format(spot_name=spot["name"], knowledge=knowledge, preference="通用")
+    # 调用LLM生成讲解词（使用风格对应的system prompt和temperature）
+    prompt = TOUR_GUIDE.format(spot_name=spot["name"], knowledge=knowledge, preference=style_config["label"])
     try:
         response = await llm.chat(
             messages=[
-                {"role": "system", "content": "你是一位风趣博学的景点讲解员，善于用故事吸引听众。"},
+                {"role": "system", "content": style_config["system"]},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.7,
+            temperature=style_config["temp"],
             max_tokens=512,
         )
         guide_text = response.strip()
@@ -358,6 +373,8 @@ async def guide(spot_name: str):
         "spot_name": spot["name"],
         "city": spot.get("city", ""),
         "guide": guide_text,
+        "style": style,
+        "style_label": style_config["label"],
         "knowledge_source": "local_kb",
     }
 

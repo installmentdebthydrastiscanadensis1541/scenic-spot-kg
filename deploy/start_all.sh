@@ -52,7 +52,7 @@ start_vllm() {
         pkill -f "vllm.entrypoints" 2>/dev/null || true
         sleep 2
 
-        # 启动vLLM（enforce-eager跳过CUDA graph编译，加快启动约30秒）
+        # 启动vLLM
         nohup python -m vllm.entrypoints.openai.api_server \
             --model $MODEL_PATH \
             --served-model-name Qwen2.5-7B-Instruct \
@@ -61,7 +61,6 @@ start_vllm() {
             --trust-remote-code \
             --max-model-len 8192 \
             --gpu-memory-utilization 0.9 \
-            --enforce-eager \
             > /root/vllm.log 2>&1 &
         local vllm_pid=$!
         echo "[$(date '+%H:%M:%S')] [vLLM] PID=$vllm_pid，等待就绪..."
