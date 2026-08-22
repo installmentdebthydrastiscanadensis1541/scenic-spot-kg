@@ -108,7 +108,7 @@
   <div class="header">
     <button class="menu-btn" onclick="toggleSidebar()">☰</button>
     小景 · 景点知识助手 <span>v0.2</span>
-    <span id="autodlBadge" class="autodl-badge offline" style="display:none">检查中</span>
+    <span id="uidBadge" style="font-size:11px;color:#999;margin-left:auto;">访客 ----</span>
   </div>
   <div class="chat-area" id="chatArea">
     <div class="welcome" id="welcomeArea">
@@ -164,6 +164,12 @@ const _keyA = _key ? '&key=' + encodeURIComponent(_key) : '';
 // 每个访客独立ID，存在localStorage，保证对话隔离
 if (!localStorage.getItem('_uid')) localStorage.setItem('_uid', 'u_' + Math.random().toString(36).substr(2, 8));
 const _uid = localStorage.getItem('_uid');
+
+// 显示访客ID后4位，方便验证隔离
+document.getElementById('uidBadge').textContent = '访客 ' + _uid.slice(-4);
+
+// 记录上次访问的对话ID，用于判断是否需要新建对话
+const _lastVisitKey = '_lastVisit_' + _uid;
 
 let currentConvId = null;
 let convs = [];
@@ -283,8 +289,23 @@ async function loadConversations() {
   renderConvList();
   if (convs.length === 0) {
     await newConversation();
-  } else if (!currentConvId) {
-    switchConversation(convs[0].id);
+  } else {
+    // 每次登录自动新建对话，旧对话保留在历史列表
+    // 判断依据：如果上次访问的对话ID还在列表中，说明是同一会话，直接新建
+    // 如果是全新访问（关闭后重新打开），也新建
+    const lastVisit = sessionStorage.getItem(_lastVisitKey);
+    if (lastVisit) {
+      // 同一浏览器会话内，恢复之前的对话
+      const lastConv = convs.find(c => c.id === lastVisit);
+      if (lastConv) {
+        switchConversation(lastConv.id);
+      } else {
+        await newConversation();
+      }
+    } else {
+      // 新的浏览器会话，自动新建对话
+      await newConversation();
+    }
   }
 }
 
@@ -304,6 +325,7 @@ async function newConversation() {
   const conv = await r.json();
   convs.unshift(conv);
   currentConvId = conv.id;
+  sessionStorage.setItem(_lastVisitKey, conv.id);
   chatArea.innerHTML = '';
   chatArea.appendChild(createWelcome());
   renderConvList();
@@ -313,6 +335,7 @@ async function newConversation() {
 
 async function switchConversation(id) {
   currentConvId = id;
+  sessionStorage.setItem(_lastVisitKey, id);
   renderConvList();
   const r = await fetch('/api/conversations/' + id + '/messages' + _keyQ + (_keyQ ? '&' : '?') + 'uid=' + _uid);
   const d = await r.json();
