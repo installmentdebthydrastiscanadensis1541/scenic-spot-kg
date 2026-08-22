@@ -114,7 +114,25 @@ class ReActAgent:
         for kw in SCENIC_KEYWORDS:
             if kw in question:
                 return False
+        # "平替/类似/有没有像"类问题必须走web_search，不能直接回答
+        if re.search(r"(类似|平替|有没有像|有没有.*一样|差不多|相似)", question):
+            return False
         return len(q) < 6  # 太短的问题也直接回答
+
+    def _needs_web_search_first(self, question: str) -> str | None:
+        """检测是否为必须先web_search的问题类型，返回建议的搜索词；否则返回None。
+        防止LLM凭记忆编造景点（如把公路隧道说成火车体验）。
+        """
+        # 平替/类似类问题：极易幻觉，必须先搜索
+        if re.search(r"(类似|平替|有没有像|有没有.*一样|相似|差不多)", question):
+            # 提取核心关键词作为搜索词
+            # 去掉常见疑问词，保留核心名词
+            search_term = re.sub(r"(国内|中国|有没有|类似|平替|相似|差不多|一样|像|的|吗|呢|吧|啊|有哪些|景点的|地方)", " ", question)
+            search_term = re.sub(r"\s+", " ", search_term).strip()
+            if len(search_term) < 3:
+                search_term = question  # fallback用原问题
+            return f"国内 {search_term} 景点"
+        return None
 
     def _is_followup(self, question: str) -> bool:
         """判断是否为追问（依赖上下文才能理解）"""
@@ -452,6 +470,14 @@ class ReActAgent:
 
         q = state.question[:MAX_QUESTION_CHARS] if len(state.question) > MAX_QUESTION_CHARS else state.question
         parts = [f"问题：{q}"]
+
+        # 首轮推理时，如果是平替/类似类问题，强制提示先web_search
+        if state.iteration == 1 and not state.observations:
+            search_hint = self._needs_web_search_first(state.question)
+            if search_hint:
+                parts.append(f"\n⚠️ 注意：这是「平替/类似」类问题，极易产生幻觉。")
+                parts.append(f"你必须第一步调用 web_search 搜索「{search_hint}」，")
+                parts.append(f"只用搜索返回的真实景点作答，禁止凭记忆编造景点或错误关联属性。")
 
         for i, (thought, action, obs) in enumerate(
             zip(state.thoughts, state.actions, state.observations)
