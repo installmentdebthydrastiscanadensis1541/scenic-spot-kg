@@ -63,16 +63,30 @@ export default {
     }
 
     // 关机指令：直接调AutoDL API，不经过FastAPI（关机后FastAPI也会死）
-    // 支持sendBeacon（POST无body）和普通fetch
+    // 支持所有method：GET（浏览器地址栏/image）、POST（sendBeacon/fetch）、OPTIONS（CORS预检）
     if (url.pathname === '/autodl/stop') {
+      // CORS预检直接放行
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+          },
+        });
+      }
       try {
         const ok = await powerOff(env);
         return new Response(JSON.stringify({ ok, msg: ok ? '已发送关机指令' : '关机API返回失败' }), {
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
         });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, msg: e.message }), {
-          status: 500, headers: { 'Content-Type': 'application/json' },
+          status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
       }
     }

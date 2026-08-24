@@ -1261,24 +1261,19 @@ async function send() {
 // 初始化
 loadConversations();
 // 页面关闭时：停止语音播放 + 自动关闭AutoDL实例以节省计费
-// 区分刷新与关闭：F5/Ctrl+R 刷新不触发关机，仅真正关闭页面时才关机
-var _isReloading = false;
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'F5' || (e.ctrlKey && (e.key === 'r' || e.key === 'R'))) {
-    _isReloading = true;
-  }
-});
-window.addEventListener('beforeunload', function() {
+// 用 pagehide 事件（比 beforeunload 更可靠，iOS/Android也支持）
+// 用 sendBeacon 发送（专为页面卸载设计，浏览器保证发送）
+function _shutdownAutoDL() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
-  // 刷新时跳过关机；关闭时用同步XHR发送GET请求（beforeunload里最可靠）
-  // sendBeacon发POST会被Worker返回405，fetch/XHR异步会被取消，同步XHR能可靠完成
-  if (!_isReloading) {
-    try {
-      var x = new XMLHttpRequest();
-      x.open('GET', '/autodl/stop' + _keyQ, false);  // false=同步
-      x.send();
-    } catch(e) {}
-  }
+  try {
+    // sendBeacon 发 POST，Worker 的 /autodl/stop 不限制 method，POST也能走到该分支
+    navigator.sendBeacon('/autodl/stop' + _keyQ);
+  } catch(e) {}
+}
+window.addEventListener('pagehide', _shutdownAutoDL);
+window.addEventListener('beforeunload', _shutdownAutoDL);
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') _shutdownAutoDL();
 });
 </script>
 </body>
