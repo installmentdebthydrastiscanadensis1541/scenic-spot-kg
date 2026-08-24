@@ -1270,9 +1270,14 @@ document.addEventListener('keydown', function(e) {
 });
 window.addEventListener('beforeunload', function() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
-  // 刷新时跳过关机；关闭时用 sendBeacon 可靠发送（fetch/XHR 会被取消）
+  // 刷新时跳过关机；关闭时用同步XHR发送GET请求（beforeunload里最可靠）
+  // sendBeacon发POST会被Worker返回405，fetch/XHR异步会被取消，同步XHR能可靠完成
   if (!_isReloading) {
-    try { navigator.sendBeacon('/autodl/stop' + _keyQ); } catch(e) {}
+    try {
+      var x = new XMLHttpRequest();
+      x.open('GET', '/autodl/stop' + _keyQ, false);  // false=同步
+      x.send();
+    } catch(e) {}
   }
 });
 </script>
