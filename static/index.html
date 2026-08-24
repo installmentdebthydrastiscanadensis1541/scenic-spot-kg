@@ -1272,7 +1272,7 @@ window.addEventListener('beforeunload', function() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   // 刷新时跳过关机；关闭时用 sendBeacon 可靠发送（fetch/XHR 会被取消）
   if (!_isReloading) {
-    try { navigator.sendBeacon('/autodl/stop'); } catch(e) {}
+    try { navigator.sendBeacon('/autodl/stop' + _keyQ); } catch(e) {}
   }
 });
 </script>

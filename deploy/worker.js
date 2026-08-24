@@ -37,6 +37,19 @@
 
 const AUTODL_API = 'https://www.autodl.com/api/v1';
 
+async function powerOff(env) {
+  const resp = await fetch(`${AUTODL_API}/instance/power_off`, {
+    method: 'POST',
+    headers: {
+      'Authorization': env.AUTODL_API_TOKEN,
+      'Content-Type': 'application/json;charset=UTF-8',
+    },
+    body: JSON.stringify({ instance_uuid: env.AUTODL_INSTANCE_ID }),
+  });
+  const data = await resp.json();
+  return data.code === 'Success';
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -46,6 +59,21 @@ export default {
       const key = url.searchParams.get('key') || request.headers.get('X-Access-Key') || '';
       if (key !== env.ACCESS_KEY) {
         return new Response('访问被拒绝，请提供正确的key', { status: 403 });
+      }
+    }
+
+    // 关机指令：直接调AutoDL API，不经过FastAPI（关机后FastAPI也会死）
+    // 支持sendBeacon（POST无body）和普通fetch
+    if (url.pathname === '/autodl/stop') {
+      try {
+        const ok = await powerOff(env);
+        return new Response(JSON.stringify({ ok, msg: ok ? '已发送关机指令' : '关机API返回失败' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, msg: e.message }), {
+          status: 500, headers: { 'Content-Type': 'application/json' },
+        });
       }
     }
 
