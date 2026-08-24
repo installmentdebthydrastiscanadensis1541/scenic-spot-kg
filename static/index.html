@@ -155,6 +155,7 @@
     <button class="menu-btn" onclick="toggleSidebar()">☰</button>
     小景 · 景点知识助手 <span>v0.2</span>
     <span id="uidBadge" style="font-size:11px;color:#999;margin-left:auto;">访客 ----</span>
+    <button id="poweroffBtn" onclick="confirmShutdown()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:white;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;margin-left:8px;" title="关闭AutoDL实例节省费用">关闭服务</button>
   </div>
   <div class="chat-area" id="chatArea">
     <div class="welcome" id="welcomeArea">
@@ -1260,40 +1261,51 @@ async function send() {
 
 // 初始化
 loadConversations();
-// 页面关闭时：停止语音播放 + 自动关闭AutoDL实例以节省计费
-// ⚠️ 关键：必须发到 Worker 域名，不能是相对路径
-// 因为页面可能运行在 AutoDL 公网地址(u1-xxx.seetacloud.com)上，相对路径会发到FastAPI(只接受POST)→405
-// Worker(scenic-kg.xxx.workers.dev)的/autodl/stop接受GET能成功关机
+// 关闭服务：点击「关闭服务」按钮 → 确认 → 发送关机指令 → 提示已关机
+// 方案：用 Image 发 GET 到 Worker 域名（已验证可行，绕过CORS和FastAPI 405）
 var _WORKER_ORIGIN = 'https://scenic-kg.zifeiyuyifeiwo.workers.dev';
 var _shutdownDone = false;
-function _shutdownAutoDL() {
-  if (_shutdownDone) return;
+function confirmShutdown() {
+  if (_shutdownDone) {
+    alert('服务已关闭，无需重复操作');
+    return;
+  }
+  if (!confirm('确认关闭AutoDL实例？\n\n关闭后将停止计费，下次访问会自动开机（需等3-5分钟）。\n建议在使用完毕后再关闭。')) {
+    return;
+  }
+  // 用 Image 发 GET 请求到 Worker（页面存活时发送，比 beforeunload 可靠）
+  var btn = document.getElementById('poweroffBtn');
+  if (btn) {
+    btn.textContent = '关机中...';
+    btn.disabled = true;
+  }
+  var img = new Image();
+  img.onload = function() { showShutdownSuccess(); };
+  img.onerror = function() {
+    // Worker 返回 JSON 不是图片，触发 onerror，但请求已发送
+    setTimeout(showShutdownSuccess, 500);
+  };
+  img.src = _WORKER_ORIGIN + '/autodl/stop' + _keyQ + '&_t=' + Date.now();
+}
+function showShutdownSuccess() {
   _shutdownDone = true;
   if ('speechSynthesis' in window) speechSynthesis.cancel();
-  try {
-    new Image().src = _WORKER_ORIGIN + '/autodl/stop' + _keyQ + '&_t=' + Date.now();
-  } catch(e) {}
+  var btn = document.getElementById('poweroffBtn');
+  if (btn) {
+    btn.textContent = '已关闭';
+    btn.style.background = 'rgba(244,67,54,0.3)';
+  }
+  alert('✅ 关机指令已发送\n\nAutoDL 实例正在关闭，请稍候在 AutoDL 控制台确认。\n现在可以安全关闭页面。');
 }
-window.addEventListener('pagehide', _shutdownAutoDL);
-window.addEventListener('beforeunload', _shutdownAutoDL);
-
-// 手动关机测试函数（Console调用：testShutdown()）
-function testShutdown() {
-  console.log('开始测试关机...');
-  console.log('_keyQ =', _keyQ);
-  var url = _WORKER_ORIGIN + '/autodl/stop' + _keyQ;
-  console.log('请求URL:', url);
-  fetch(url).then(function(r) {
-    console.log('状态码:', r.status);
-    return r.text();
-  }).then(function(t) {
-    console.log('响应:', t);
-    alert('关机结果:\n响应: ' + t);
-  }).catch(function(e) {
-    console.log('错误:', e.message);
-    alert('关机失败: ' + e.message);
-  });
-}
+// 页面关闭时也尝试发送（双保险，但主要靠按钮）
+window.addEventListener('beforeunload', function() {
+  if (!_shutdownDone) {
+    try {
+      new Image().src = _WORKER_ORIGIN + '/autodl/stop' + _keyQ + '&_t=' + Date.now();
+    } catch(e) {}
+  }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+});
 </script>
 </body>
 </html>
