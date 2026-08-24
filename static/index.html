@@ -1260,9 +1260,20 @@ async function send() {
 
 // 初始化
 loadConversations();
-// 页面关闭时停止语音播放
+// 页面关闭时：停止语音播放 + 自动关闭AutoDL实例以节省计费
+// 区分刷新与关闭：F5/Ctrl+R 刷新不触发关机，仅真正关闭页面时才关机
+var _isReloading = false;
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'F5' || (e.ctrlKey && (e.key === 'r' || e.key === 'R'))) {
+    _isReloading = true;
+  }
+});
 window.addEventListener('beforeunload', function() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
+  // 刷新时跳过关机；关闭时用 sendBeacon 可靠发送（fetch/XHR 会被取消）
+  if (!_isReloading) {
+    try { navigator.sendBeacon('/autodl/stop'); } catch(e) {}
+  }
 });
 </script>
 </body>
