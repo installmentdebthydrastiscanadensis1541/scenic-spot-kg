@@ -1274,6 +1274,24 @@ function _shutdownAutoDL() {
 }
 window.addEventListener('pagehide', _shutdownAutoDL);
 window.addEventListener('beforeunload', _shutdownAutoDL);
+
+// 手动关机测试函数（Console调用：testShutdown()）
+function testShutdown() {
+  console.log('开始测试关机...');
+  console.log('_keyQ =', _keyQ);
+  var url = '/autodl/stop' + _keyQ;
+  console.log('请求URL:', url);
+  fetch(url).then(function(r) {
+    console.log('状态码:', r.status);
+    return r.text();
+  }).then(function(t) {
+    console.log('响应:', t);
+    alert('关机结果:\n状态码见Console\n响应: ' + t);
+  }).catch(function(e) {
+    console.log('错误:', e.message);
+    alert('关机失败: ' + e.message);
+  });
+}
 </script>
 </body>
 </html>
