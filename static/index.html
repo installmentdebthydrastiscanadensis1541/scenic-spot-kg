@@ -1261,20 +1261,19 @@ async function send() {
 // 初始化
 loadConversations();
 // 页面关闭时：停止语音播放 + 自动关闭AutoDL实例以节省计费
-// 用 pagehide 事件（比 beforeunload 更可靠，iOS/Android也支持）
-// 用 sendBeacon 发送（专为页面卸载设计，浏览器保证发送）
+// 用 Image 对象发 GET 请求（页面卸载时最可靠，浏览器保证加载图片资源）
+// 已验证 GET /autodl/stop?key=xxx 能成功关机
+var _shutdownDone = false;
 function _shutdownAutoDL() {
+  if (_shutdownDone) return;
+  _shutdownDone = true;
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   try {
-    // sendBeacon 发 POST，Worker 的 /autodl/stop 不限制 method，POST也能走到该分支
-    navigator.sendBeacon('/autodl/stop' + _keyQ);
+    new Image().src = '/autodl/stop' + _keyQ + '&_t=' + Date.now();
   } catch(e) {}
 }
 window.addEventListener('pagehide', _shutdownAutoDL);
 window.addEventListener('beforeunload', _shutdownAutoDL);
-document.addEventListener('visibilitychange', function() {
-  if (document.visibilityState === 'hidden') _shutdownAutoDL();
-});
 </script>
 </body>
 </html>
