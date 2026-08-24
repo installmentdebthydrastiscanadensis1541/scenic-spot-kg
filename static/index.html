@@ -1263,7 +1263,9 @@ async function send() {
 loadConversations();
 // 关闭服务：点击「关闭服务」按钮 → 确认 → 发送关机指令 → 提示已关机
 // 方案：用 Image 发 GET 到 Worker 域名（已验证可行，绕过CORS和FastAPI 405）
+// ⚠️ 关键：Worker 域名和 access key 必须硬编码，因为跳转到 AutoDL 公网地址后 URL 里没有 ?key=
 var _WORKER_ORIGIN = 'https://scenic-kg.zifeiyuyifeiwo.workers.dev';
+var _WORKER_KEY = '2358';  // 与 Worker 的 ACCESS_KEY 一致
 var _shutdownDone = false;
 function confirmShutdown() {
   if (_shutdownDone) {
@@ -1285,7 +1287,8 @@ function confirmShutdown() {
     // Worker 返回 JSON 不是图片，触发 onerror，但请求已发送
     setTimeout(showShutdownSuccess, 500);
   };
-  img.src = _WORKER_ORIGIN + '/autodl/stop' + _keyQ + '&_t=' + Date.now();
+  // 硬编码完整 URL（不依赖 _keyQ，因为 AutoDL 页面 URL 里没有 key 参数）
+  img.src = _WORKER_ORIGIN + '/autodl/stop?key=' + _WORKER_KEY + '&_t=' + Date.now();
 }
 function showShutdownSuccess() {
   _shutdownDone = true;
@@ -1301,7 +1304,7 @@ function showShutdownSuccess() {
 window.addEventListener('beforeunload', function() {
   if (!_shutdownDone) {
     try {
-      new Image().src = _WORKER_ORIGIN + '/autodl/stop' + _keyQ + '&_t=' + Date.now();
+      new Image().src = _WORKER_ORIGIN + '/autodl/stop?key=' + _WORKER_KEY + '&_t=' + Date.now();
     } catch(e) {}
   }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
