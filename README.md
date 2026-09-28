@@ -56,7 +56,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/installmentdebthydrastiscanadensis1541/scenic-spot-kg.git
+git clone https://installmentdebthydrastiscanadensis1541.github.io
 cd scenic-spot-kg
 
 # 2. 配置环境变量
